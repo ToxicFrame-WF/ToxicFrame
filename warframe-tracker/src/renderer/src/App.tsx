@@ -24,6 +24,7 @@ import { MarketActivity } from './components/MarketActivity'
 import { PeriodSelect, YourTrading, type Period } from './components/TradingAnalytics'
 import { useArbitrationAlerts } from './hooks/useArbitrationAlerts'
 import { useCycleAlerts } from './hooks/useCycleAlerts'
+import { useWeeklyBaseline } from './hooks/useWeeklyBaseline'
 import { SyndicatesPage } from './components/StreetCred'
 import NewItems from './components/NewItems'
 import RightPanel from './components/RightPanel'
@@ -42,10 +43,7 @@ function App(): React.JSX.Element {
   const settings = useSettings()
   useArbitrationAlerts()
   useCycleAlerts()
-  // keep the main-process loading-screen auto-refresh in sync with the setting
-  useEffect(() => {
-    window.api.setInventoryAutoRefresh(settings.autoRefreshInventory)
-  }, [settings.autoRefreshInventory])
+  useWeeklyBaseline()
   // a clicked notification (live market deal) opens its page
   useEffect(() => window.api.onNavigate(setPage), []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(

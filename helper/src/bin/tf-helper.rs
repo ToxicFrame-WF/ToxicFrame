@@ -21,8 +21,8 @@ use toxicframe_helper::PROCESS_NAME;
 
 const INVENTORY_URL: &str = "https://mobile.warframe.com/api/inventory.php";
 const RELIC_PREFIX: &str = "/Lotus/Types/Game/Projections/";
-const MAX_ATTEMPTS: usize = 3;
-const MAX_HITS: usize = 200;
+const MAX_ATTEMPTS: usize = 8;
+const MAX_HITS: usize = 2000;
 const MAX_BODY: u64 = 64 * 1024 * 1024;
 
 /// Top-level inventory sections included in the output under "inventory".
@@ -114,12 +114,21 @@ enum Fetch {
     Failed(String),
 }
 
+/// Only 401/403 mean the session was refused; 5xx/429 etc. are server trouble, not worth other candidates.
+fn status_error(code: u16) -> Fetch {
+    if matches!(code, 401 | 403) {
+        Fetch::Rejected(format!("HTTP {code}"))
+    } else {
+        Fetch::Failed(format!("server answered HTTP {code}"))
+    }
+}
+
 fn fetch(agent: &ureq::Agent, secret: &Secret) -> Result<Value, Fetch> {
     let url = format!("{INVENTORY_URL}{}", secret.query());
     // Never format the ureq error itself: it can contain the URL.
     let response = match agent.get(&url).call() {
         Ok(r) => r,
-        Err(ureq::Error::Status(code, _)) => return Err(Fetch::Rejected(format!("HTTP {code}"))),
+        Err(ureq::Error::Status(code, _)) => return Err(status_error(code)),
         Err(ureq::Error::Transport(t)) => {
             return Err(Fetch::Failed(format!("network error ({:?})", t.kind())));
         }
@@ -218,6 +227,16 @@ fn fail(code: i32, msg: &str) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_401_403_are_rejected() {
+        for c in [401, 403] {
+            assert!(matches!(status_error(c), Fetch::Rejected(_)));
+        }
+        for c in [404, 429, 500, 503] {
+            assert!(matches!(status_error(c), Fetch::Failed(_)));
+        }
+    }
 
     #[test]
     fn output_drops_account_fields_keeps_allowed() {

@@ -410,19 +410,25 @@ export default function RivenFinder(): React.JSX.Element {
       return t && abbr(t, melee) === a
     })?.[0]
 
-  const rows = useMemo(() => {
-    const list = found.slug === slug ? (found.list ?? []) : []
+  const list = useMemo(() => (found.slug === slug ? (found.list ?? []) : []), [found, slug])
+  // fair prices only depend on the listings and core stats, not on the filter being typed
+  const fair = useMemo(() => {
     const core = new Set(
       (rule?.core ?? []).flatMap((a) => {
         const s = slugForAbbr(a)
         return s ? [s] : []
       })
     )
+    return new Map(list.map((l) => [l.id, fairPrice(l, list, core)]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, rule, attrs, melee])
+
+  const rows = useMemo(() => {
     return list
       .map((l) => ({
         l,
         m: matchListing(l, filter),
-        deal: dealScore(l.price, fairPrice(l, list, core))
+        deal: dealScore(l.price, fair.get(l.id))
       }))
       .filter(
         (x): x is { l: RivenListing; m: NonNullable<typeof x.m>; deal: number | undefined } => !!x.m
@@ -434,8 +440,7 @@ export default function RivenFinder(): React.JSX.Element {
             ? b.m.pct - a.m.pct || a.l.price - b.l.price
             : a.l.price - b.l.price
       )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [found, slug, filter, sort, rule, attrs])
+  }, [list, fair, filter, sort])
 
   const odds = useMemo(() => {
     if (!weapon || !filter.pos.length) return ''

@@ -3,7 +3,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*'] # semver tags only
 
 permissions:
   contents: write
@@ -22,6 +22,7 @@ jobs:
           cache-dependency-path: warframe-tracker/package-lock.json
 
       - name: Build helper
+        shell: bash
         working-directory: helper
         run: |
           cargo test --locked
@@ -30,9 +31,10 @@ jobs:
       - name: Set version from tag
         shell: bash
         working-directory: warframe-tracker
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Build installer
+        shell: bash
         working-directory: warframe-tracker
         run: |
           npm ci
@@ -44,5 +46,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        # tags like v0.1.0-beta.1 are published as pre-releases
-        run: gh release create "$TAG" warframe-tracker/dist/ToxicFrame-Setup-*.exe --title "ToxicFrame $TAG" --generate-notes $([[ "$TAG" == *-* ]] && echo --prerelease)
+        # tags like v0.1.0-beta.1 are published as pre-releases; a re-pushed tag replaces the installer on its existing release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" warframe-tracker/dist/ToxicFrame-Setup-*.exe --clobber
+          else
+            gh release create "$TAG" warframe-tracker/dist/ToxicFrame-Setup-*.exe --title "ToxicFrame $TAG" --generate-notes $([[ "$TAG" == *-* ]] && echo --prerelease)
+          fi

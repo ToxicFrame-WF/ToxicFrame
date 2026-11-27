@@ -8,7 +8,12 @@ export const MIN_COMPARABLES = 6
 // lower quartile is the going price a buyer can actually get (Acceltra: median said 500p = 77% under).
 const QUANTILE = 0.25
 const hasNeg = (l: L): boolean => l.attrs.some((a) => !a.positive)
-const pos = (l: L): Set<string> => new Set(l.attrs.filter((a) => a.positive).map((a) => a.slug))
+const posCache = new WeakMap<L, Set<string>>()
+const pos = (l: L): Set<string> => {
+  let s = posCache.get(l)
+  if (!s) posCache.set(l, (s = new Set(l.attrs.filter((a) => a.positive).map((a) => a.slug))))
+  return s
+}
 
 // Comparable = another listing with the same layout (number of positives, negative or not: a 3-stat
 // riven with no curse costs many times a 2-stat one with a curse) sharing at least 2 positive stats with `l`. When at least 3 of them

@@ -30,6 +30,11 @@ const file = (): string => join(app.getPath('userData'), 'browse-icons.json')
 
 let icons: Record<string, string> | null = null
 let refreshing: Promise<void> | null = null
+const updatedHooks: Array<() => void> = []
+// callers that cached picture URLs register here to rebuild them once the real map arrives
+export const onIconsUpdated = (fn: () => void): void => {
+  updatedHooks.push(fn)
+}
 
 const plain = (path: string): string => path.replace(/^\/Lotus\/StoreItems\//, '/Lotus/')
 
@@ -98,6 +103,7 @@ export function refreshBrowseIcons(): Promise<void> {
     }
     if (Object.keys(map).length < 1000) return // a bad download: keep what we had
     icons = map
+    for (const fn of updatedHooks) fn()
     try {
       writeFileSync(file(), JSON.stringify({ at: Date.now(), icons: map }))
     } catch {

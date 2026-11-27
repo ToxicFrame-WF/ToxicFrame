@@ -29,6 +29,20 @@ export function addTrade(t: Trade): void {
   saveTrades([...getTrades(), t])
 }
 
+// The log file can be briefly locked: retry a few times before giving up.
+export async function saveTrade(t: Trade): Promise<boolean> {
+  for (let i = 0; i < 4; i++) {
+    try {
+      addTrade(t)
+      return true
+    } catch (e) {
+      console.error('Could not save the trade:', e)
+      await new Promise((r) => setTimeout(r, 500))
+    }
+  }
+  return false
+}
+
 export function saveTrades(all: Trade[]): void {
   // temp file + rename, so a crash mid-write can't wipe the history
   writeFileSync(file() + '.tmp', JSON.stringify(all))

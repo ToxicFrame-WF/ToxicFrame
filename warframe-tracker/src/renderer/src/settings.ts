@@ -52,7 +52,6 @@ export interface Settings {
   craftingFavorites: string[] // craftable unique names in the crafting-helper plan
   setupDone: boolean // the first-run screen was accepted
   manualInventory: boolean // the inventory helper only runs on the Refresh button
-  autoRefreshInventory: boolean // re-read inventory when a loading screen finishes
   staleAfterMinutes: number // inventory counts as old after this long without an update (0 = never)
   keepForCrafting: 'unowned' | 'unmastered' | 'favorites' // Inventory: which parts to hold back from "Safe to list"
   rankAware: boolean // My orders and Compare look at the rank of mods and arcanes
@@ -97,7 +96,6 @@ const DEFAULTS: Settings = {
   partFavorites: [],
   setupDone: false,
   manualInventory: false,
-  autoRefreshInventory: true,
   staleAfterMinutes: 60,
   keepForCrafting: 'unowned',
   rankAware: true,
@@ -126,14 +124,28 @@ function applyTheme(): void {
   document.documentElement.dataset.mode = 'nightcity'
 }
 
-function merge(saved: Partial<Settings>): Settings {
-  return {
-    ...DEFAULTS,
-    ...saved,
-    alerts: { ...DEFAULTS.alerts, ...(saved.alerts ?? {}) },
-    arbPrefs: { ...DEFAULTS.arbPrefs, ...(saved.arbPrefs ?? {}) },
-    cycleAlerts: { ...DEFAULTS.cycleAlerts, ...(saved.cycleAlerts ?? {}) }
+// keep a saved value only when its type matches the default (a hand-edited or imported file can't crash the app)
+function keep<T extends object>(base: T, saved: unknown): T {
+  const out = { ...base } as Record<string, unknown>
+  if (!saved || typeof saved !== 'object') return out as T
+  for (const [k, d] of Object.entries(base)) {
+    const v = (saved as Record<string, unknown>)[k]
+    if (
+      v !== undefined &&
+      (d === null || (v !== null && typeof v === typeof d && Array.isArray(v) === Array.isArray(d)))
+    )
+      out[k] = v
   }
+  return out as T
+}
+
+function merge(saved: unknown): Settings {
+  const s = keep(DEFAULTS, saved)
+  const o = (saved ?? {}) as Record<string, unknown>
+  s.alerts = keep(DEFAULTS.alerts, o.alerts)
+  s.arbPrefs = keep(DEFAULTS.arbPrefs, o.arbPrefs)
+  s.cycleAlerts = keep(DEFAULTS.cycleAlerts, o.cycleAlerts)
+  return s
 }
 
 function load(): Settings {
@@ -237,7 +249,7 @@ export const resetSettings = (): void => updateSettings({ ...DEFAULTS })
 export const exportSettings = (): string => JSON.stringify(current, null, 2)
 export function importSettings(text: string): boolean {
   try {
-    updateSettings(merge(JSON.parse(text)))
+    updateSettings({ ...merge(JSON.parse(text)), setupDone: current.setupDone })
     return true
   } catch {
     return false

@@ -328,6 +328,14 @@ function shopKind(name: string, category?: string): ShopKind {
   return category && WEAPONS.has(category) ? 'Weapons' : 'Other'
 }
 let shop: Record<string, ShopItem[]> | null = null
+// the picture map changed: drop caches that hold picture URLs
+export function resetGameDataImages(): void {
+  cache = null
+  imagesByName = null
+  imagesByUnique = null
+  namesByUnique = null
+  shop = null
+}
 export function getSyndicateShop(): Record<string, ShopItem[]> {
   if (shop) return shop
   shop = {}

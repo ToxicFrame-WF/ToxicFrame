@@ -22,12 +22,15 @@ export async function getRivenGrades(): Promise<Record<string, GradeRule>> {
     // nothing saved yet
   }
   const rules: Record<string, GradeRule> = {}
+  let complete = true // a partial sheet must not be cached for a week
   try {
     for (const gid of TABS) {
       const res = await net.fetch(`${SHEET}/export?format=csv&gid=${gid}`)
       if (res.ok) Object.assign(rules, rulesFromCsv(await res.text()))
+      else complete = false
     }
-    if (Object.keys(rules).length) writeFileSync(file(), JSON.stringify({ at: Date.now(), rules }))
+    if (complete && Object.keys(rules).length)
+      writeFileSync(file(), JSON.stringify({ at: Date.now(), rules }))
   } catch {
     // offline: no grades this time
   }

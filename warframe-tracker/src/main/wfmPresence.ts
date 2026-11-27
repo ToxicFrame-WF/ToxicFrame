@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
-import { getWfmStatus, getWfmToken } from './wfmAccount'
-import { WFM_USER_AGENT } from './wfm'
+import { getWfmSlug, getWfmStatus, getWfmToken } from './wfmAccount'
+import { WFM_USER_AGENT, wfmFetch } from './wfm'
 
 // Your warframe.market status (online / in game / invisible). warframe.market sets it over its
 // websocket, not the REST API: sign in with the account token, then "@wfm|cmd/status/set".
@@ -20,6 +20,23 @@ export const setPresenceListener = (fn: (s: WfmPresence | null) => void): void =
   onChange = fn
 }
 export const getPresence = (): WfmPresence | null => current
+
+// What buyers see (also before the app has set a status): the public profile's status.
+export async function getPublicStatus(): Promise<WfmPresence | 'offline' | null> {
+  await getWfmStatus()
+  const slug = getWfmSlug()
+  if (!slug) return null
+  try {
+    const res = await wfmFetch(`https://api.warframe.market/v2/user/${encodeURIComponent(slug)}`, {
+      headers: { Platform: 'pc', Accept: 'application/json' }
+    })
+    if (!res.ok) return null
+    const st = ((await res.json()) as { data?: { status?: string } }).data?.status
+    return st === 'online' || st === 'ingame' || st === 'invisible' || st === 'offline' ? st : null
+  } catch {
+    return null
+  }
+}
 
 const id = (): string => Math.random().toString(36).slice(2, 13)
 const send = (route: string, payload?: unknown): void =>

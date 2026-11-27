@@ -9,20 +9,18 @@ import NcCard from './NcCard'
 import {
   WEEKLY_GROUPS,
   WEEKLY_TASKS,
-  autoDone,
-  weekTicks,
   nextReset,
   endgameStreak,
-  icebindRuns,
   teshinOffer,
   bird3Shard,
   FIXED_WARES,
   type Ware,
-  eliteTier,
   weekKey,
   weeklyCounts,
-  type WeeklyCounts,
-  type WeeklyTask
+  type WeeklyTask,
+  weekStatus,
+  type WeeklyStart,
+  type WeeklyTicks
 } from '../weekly'
 
 const GREEN = '#3fd28a' // finished, as on the Sets tab
@@ -46,16 +44,8 @@ export default function WeeklyTracker({
   const week = weekKey(now)
   const [hidden, setHidden] = usePersisted<string[]>('Weekly.hidden', [])
   const [custom, setCustom] = usePersisted<{ id: string; label: string }[]>('Weekly.custom', [])
-  const [ticks, setTicks] = usePersisted<{
-    week: string
-    on: string[]
-    off: string[]
-    runs?: Record<string, number> // counter tasks: runs done this week
-  }>('Weekly.ticks', { week, on: [], off: [] })
-  const [start, setStart] = usePersisted<{ week: string; counts: WeeklyCounts } | null>(
-    'Weekly.start',
-    null
-  )
+  const [ticks, setTicks] = usePersisted<WeeklyTicks>('Weekly.ticks', { week, on: [], off: [] })
+  const [start] = usePersisted<WeeklyStart>('Weekly.start', null)
   const [bothArchimedeas, setBothArchimedeas] = usePersisted('Weekly.bothArchimedeas', false)
   const [eliteRewards, setEliteRewards] = usePersisted('Weekly.eliteRewards', false)
   const [newTask, setNewTask] = useState('')
@@ -67,37 +57,20 @@ export default function WeeklyTracker({
       ? weeklyCounts(misc as { ItemType?: string; ItemCount?: number }[])
       : null
   }, [inv.data])
-  // only an inventory read this week can be the start: the copy saved on disk may be days old
-  const fetchedAt = inv.data?.fetchedAt ?? 0
-  useEffect(() => {
-    if (!counts || fetchedAt < Date.parse(week + 'T00:00:00Z')) return
-    if (start?.week !== week) setStart({ week, counts })
-    // a start saved before a count was tracked lacks it: fill only the missing ones, from now
-    else if (Object.keys(counts).some((k) => !(k in start.counts)))
-      setStart({ week, counts: { ...counts, ...start.counts } })
-  }, [counts, start, week, setStart, fetchedAt])
-
-  // last week's ticks don't count
-  const on = new Set(ticks.week === week ? ticks.on : [])
-  const off = new Set(ticks.week === week ? ticks.off : [])
-  const auto = new Set(counts && start?.week === week ? autoDone(start.counts, counts) : [])
-  const tierOf = (id: string): number =>
-    eliteRewards && (id === 'deep' || id === 'temporal') && counts && start?.week === week
-      ? eliteTier(id, start.counts, counts)
-      : 0
-  const { ticked, autoTicks, netracellMax } = weekTicks({
+  const {
     on,
     off,
-    auto,
-    tiers: { deep: tierOf('deep'), temporal: tierOf('temporal') },
-    elite: eliteRewards,
-    both: bothArchimedeas
-  })
-  const maxOf = (t: WeeklyTask): number => (t.id === 'netracells' ? netracellMax : (t.max ?? 0))
-  const savedRuns = ticks.week === week && typeof ticks.runs === 'object' ? ticks.runs : {}
-  const autoIcebind = counts && start?.week === week ? icebindRuns(start.counts, counts) : 0
-  const runsOf = (t: WeeklyTask): number =>
-    Math.min(Math.max(savedRuns[t.id] ?? 0, t.id === 'icebind' ? autoIcebind : 0), maxOf(t))
+    savedRuns,
+    tierOf,
+    ticked,
+    autoTicks,
+    maxOf,
+    runsOf,
+    isDone,
+    tasks,
+    counted,
+    groupDone
+  } = weekStatus({ week, counts, start, ticks, hidden, custom, bothArchimedeas, eliteRewards })
   const setRuns = (t: WeeklyTask, n: number): void =>
     setTicks({
       week,
@@ -105,7 +78,6 @@ export default function WeeklyTracker({
       off: [...off],
       runs: { ...savedRuns, [t.id]: Math.max(0, Math.min(maxOf(t), n)) }
     })
-  const isDone = (t: WeeklyTask): boolean => (t.max ? runsOf(t) >= maxOf(t) : ticked(t.id))
   const toggle = (id: string): void => {
     const nOn = new Set(on)
     const nOff = new Set(off)
@@ -119,27 +91,14 @@ export default function WeeklyTracker({
     setTicks({ week, on: [...nOn], off: [...nOff], runs: savedRuns })
   }
 
-  const tasks: WeeklyTask[] = [
-    ...WEEKLY_TASKS,
-    ...custom.map((c) => ({ id: c.id, label: c.label, group: 'Custom' }))
-  ]
   const shown = tasks.filter((t) => editing || !hidden.includes(t.id))
-  const counted = tasks.filter((t) => !hidden.includes(t.id))
   const doneCount = counted.filter((t) => isDone(t)).length
   const pct = counted.length ? Math.round((100 * doneCount) / counted.length) : 0
   const allDone = counted.length > 0 && doneCount === counted.length
-  const groupDone = (g: string): boolean => {
-    const l = counted.filter((t) => t.group === g)
-    return l.length > 0 && l.every(isDone)
-  }
 
-  // remember whether Endgame was cleared each week, for the streak
-  const [history, setHistory] = usePersisted<Record<string, boolean>>('Weekly.history', {})
-  const endgameDone = groupDone('Endgame')
-  useEffect(() => {
-    if (!!history[week] !== endgameDone) setHistory((h) => ({ ...h, [week]: endgameDone }))
-  }, [endgameDone, week, history, setHistory])
-  const streak = endgameStreak(history, week)
+  // the Endgame streak is recorded app-wide (useWeeklyBaseline); count this week live here
+  const [history] = usePersisted<Record<string, boolean>>('Weekly.history', {})
+  const streak = endgameStreak({ ...history, [week]: groupDone('Endgame') }, week)
 
   const addTask = (): void => {
     const label = newTask.trim()

@@ -43,6 +43,10 @@ npm test             # logic tests
 - Arbitration tiers: the [Arbitration Goons](https://arbi.guide/)
 - Riven grades: [44bananas' sheet](https://docs.google.com/spreadsheets/d/1zbaeJBuBn44cbVKzJins_E3hTDpnmvOk8heYN-G8yy8)
 
+## Contributing
+
+Pull requests are welcome. The code is maintained in a separate development repository and published here on each release, so accepted changes are carried over by the maintainer.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE). Warframe and all related names, assets and imagery are trademarks and copyright of Digital Extremes Ltd.

@@ -22,7 +22,8 @@ export interface ArbiState {
 }
 declare global {
   type WfmPresence = 'invisible' | 'online' | 'ingame'
-  type NotifyKind = 'arbitration' | 'marketDeal' | 'trade' | 'reward' | 'chat' | 'cycle' | 'sniper'
+  type NotifyKind =
+    'arbitration' | 'marketDeal' | 'undercut' | 'trade' | 'reward' | 'chat' | 'cycle' | 'sniper'
   // notification settings as the page sees them: the webhook itself never leaves the main process
   interface NotifyConfigView {
     webhookSet: boolean
@@ -210,11 +211,17 @@ declare global {
     polarity?: string
     attributes: ContractAttr[]
     updated?: string
+    startingPrice?: number
+    buyoutPrice?: number
+    topBid?: number
+    minRep?: number
+    note?: string
   }
   interface ContractsResult {
     ok: boolean
     contracts: Contract[]
     error?: string
+    savedAt?: number
   }
   interface MyOrdersResult {
     savedAt?: number
@@ -468,6 +475,20 @@ declare global {
         text: string
       ) => Promise<{ ok: boolean; days?: number; trades?: number; error?: string }>
       getMyContracts: () => Promise<ContractsResult>
+      getSavedContracts: () => Promise<ContractsResult | null>
+      updateContract: (
+        id: string,
+        change: {
+          visible?: boolean
+          starting_price?: number
+          buyout_price?: number | null
+          minimal_reputation?: number
+          note?: string
+        }
+      ) => Promise<{ ok: boolean; error?: string }>
+      removeContract: (id: string) => Promise<{ ok: boolean; error?: string }>
+      setAllContractsVisible: (visible: boolean) => Promise<{ ok: boolean; error?: string }>
+      createContract: (body: unknown) => Promise<{ ok: boolean; error?: string }>
       updateOrder: (
         id: string,
         edit: { platinum?: number; quantity?: number; visible?: boolean }
@@ -579,7 +600,10 @@ declare global {
         Record<string, { core: string[]; good: string[]; neg: string[] }>
       >
       getRivenCatalog: () => Promise<{
-        weapons: Record<string, { name: string; rivenType: string; icon?: string }>
+        weapons: Record<
+          string,
+          { name: string; gameRef?: string; rivenType: string; icon?: string }
+        >
         attrs: Record<string, { name: string; unit?: string }>
       }>
       searchRivenAuctions: (slug: string) => Promise<RivenListing[]>
@@ -617,8 +641,8 @@ declare global {
       getWarframeDetail: (uniqueName: string) => Promise<WarframeDetail | null>
       getInventory: () => Promise<InventoryStatus>
       refreshInventory: () => Promise<InventoryStatus>
-      setInventoryAutoRefresh: (on: boolean) => void
       getWfmPresence: () => Promise<WfmPresence | null>
+      getWfmPublicStatus: () => Promise<WfmPresence | 'offline' | null>
       setWfmPresence: (s: WfmPresence) => Promise<void>
       setWfmPresenceAuto: (on: boolean, base: WfmPresence) => Promise<void>
       onWfmPresence: (cb: (s: WfmPresence | null) => void) => () => void

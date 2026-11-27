@@ -25,7 +25,7 @@ const cache = new Map<string, { at: number; list: Listing[] }>()
 // positive_stats / negative_stats query params if a weapon has more listings than that.
 export async function searchAuctions(slug: string): Promise<Listing[]> {
   const hit = cache.get(slug)
-  if (hit && Date.now() - hit.at < 60_000) return hit.list
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.list
   const cat = await getRivenCatalog()
   const res = await wfmFetch(
     `https://api.warframe.market/v1/auctions/search?type=riven&weapon_url_name=${encodeURIComponent(slug)}&sort_by=price_asc&buyout_policy=with`,

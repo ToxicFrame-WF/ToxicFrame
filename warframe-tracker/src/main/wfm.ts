@@ -20,6 +20,9 @@ export async function wfmFetch(url: string, init: RequestInit = {}): Promise<Res
   const res = await net.fetch(url, {
     ...init,
     headers,
+    // no stored cookies: a logged-out "JWT" cookie overrides the login header on v1 (401 on every
+    // own-account v1 route until this, found 2026-11-27); the app always logs in by header
+    credentials: 'omit',
     signal: init.signal ?? AbortSignal.timeout(20_000) // a hung request must not freeze single-flight guards
   })
   if (res.status === 429) {

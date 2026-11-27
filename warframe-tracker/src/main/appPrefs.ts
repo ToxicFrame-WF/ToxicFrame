@@ -26,7 +26,7 @@ export interface AppPrefs {
   window?: { x: number; y: number; width: number; height: number; maximized: boolean }
 }
 
-let prefs: AppPrefs = {
+const DEFAULTS: AppPrefs = {
   closeWarning: false,
   moveToSecondary: false,
   autoTrackTrades: true,
@@ -43,6 +43,7 @@ let prefs: AppPrefs = {
   manualInventory: false,
   setupDone: false
 }
+let prefs: AppPrefs = { ...DEFAULTS }
 let loaded = false
 const file = (): string => join(app.getPath('userData'), 'app-prefs.json')
 
@@ -56,6 +57,22 @@ export function getPrefs(): AppPrefs {
     }
   }
   return prefs
+}
+
+// The renderer's prefs:set channel: a plain object, known keys of the right type only. `window`
+// and `notify` are owned by the main process.
+export function setPrefsFromRenderer(patch: unknown): void {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  const ok: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(patch))
+    if (
+      k in DEFAULTS &&
+      k !== 'notify' &&
+      k !== 'window' &&
+      typeof v === typeof DEFAULTS[k as keyof AppPrefs]
+    )
+      ok[k] = v
+  setPrefs(ok as Partial<AppPrefs>)
 }
 
 export function setPrefs(patch: Partial<AppPrefs>): void {

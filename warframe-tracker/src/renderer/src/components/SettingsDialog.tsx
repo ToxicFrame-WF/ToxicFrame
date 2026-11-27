@@ -144,6 +144,7 @@ function Notice({ children }: { children: React.ReactNode }): React.JSX.Element 
 const ROUTE_ROWS: [NotifyKind, string][] = [
   ['arbitration', 'Arbitrations'],
   ['marketDeal', 'Market deals'],
+  ['undercut', 'Undercut orders'],
   ['trade', 'Trades'],
   ['reward', 'Rewards'],
   ['chat', 'In-game messages'],

@@ -1884,3 +1884,33 @@ test('toData sums relic refinements and skips zero counts', async () => {
   )
   assert.deepEqual(d.relics[P + 'Bronze'], { Intact: 2, Flawless: 1 })
 })
+
+import { weekStatus, WEEKLY_TASKS } from '../src/renderer/src/weekly.ts'
+test('weekly status: Endgame done from this week’s ticks only, hidden tasks ignored', () => {
+  const endgame = WEEKLY_TASKS.filter((t) => t.group === 'Endgame')
+  const base = {
+    week: '2026-11-23',
+    counts: null,
+    start: null,
+    hidden: [] as string[],
+    custom: [],
+    bothArchimedeas: true,
+    eliteRewards: false
+  }
+  const runs = Object.fromEntries(endgame.filter((t) => t.max).map((t) => [t.id, 99]))
+  const all = { week: base.week, on: endgame.map((t) => t.id), off: [], runs }
+  assert.equal(weekStatus({ ...base, ticks: all }).groupDone('Endgame'), true)
+  // last week's ticks don't count
+  assert.equal(
+    weekStatus({ ...base, ticks: { ...all, week: '2026-11-16' } }).groupDone('Endgame'),
+    false
+  )
+  // one task missing, but hidden: still done
+  const [first, ...rest] = endgame
+  const partial = { ...all, on: rest.map((t) => t.id), runs: { ...runs, [first.id]: 0 } }
+  assert.equal(weekStatus({ ...base, ticks: partial }).groupDone('Endgame'), false)
+  assert.equal(
+    weekStatus({ ...base, ticks: partial, hidden: [first.id] }).groupDone('Endgame'),
+    true
+  )
+})

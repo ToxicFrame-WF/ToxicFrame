@@ -3,31 +3,68 @@ import { notify } from './notify'
 import { getItemMeta } from './itemMeta'
 import { setPartCounts } from './gameData'
 import { closeOrder, getMyOrders, knownOrders } from './marketOrders'
-import { addTrade } from './tradeLog'
+import { saveTrade } from './tradeLog'
 import { planTrade, type LoggedTrade } from './tradeParse'
 import type { TradeStack } from './afImport'
 
 // Auto-track: when EE.log shows a finished trade, close the warframe.market orders it completes and
 // write every traded item to the trade log (also extra copies and items without an order).
 // Off with Settings > Auto-track trades.
-// The log file can be briefly locked: retry a few times before giving up.
-async function saveTrade(t: Parameters<typeof addTrade>[0]): Promise<boolean> {
-  for (let i = 0; i < 4; i++) {
-    try {
-      addTrade(t)
-      return true
-    } catch (e) {
-      console.error('Could not save the trade:', e)
-      await new Promise((r) => setTimeout(r, 500))
-    }
+
+// Items for items with no net platinum (or a trade that could not be matched): logged as a swap
+// with both sides, no order touched. `warn` replaces the success title.
+async function logSwap(trade: LoggedTrade, warn?: string): Promise<void> {
+  const items = (list: typeof trade.gave): TradeStack[] =>
+    list.filter((i) => !/^platinum$/i.test(i.name)).map((i) => ({ name: i.name, count: i.count }))
+  const gave = items(trade.gave)
+  const got = items(trade.got)
+  if (!gave.length && !got.length) return
+  const plat = (list: typeof trade.gave): number =>
+    list.filter((i) => /^platinum$/i.test(i.name)).reduce((n, i) => n + i.count, 0)
+  const saved = await saveTrade({
+    at: Date.now(),
+    type: 'trade',
+    itemId: '',
+    platinum: 0,
+    quantity: 1,
+    name: got[0]?.name ?? gave[0]?.name,
+    user: trade.user,
+    gave,
+    got,
+    platGave: plat(trade.gave),
+    platGot: plat(trade.got)
+  })
+  if (!saved) {
+    notify({
+      kind: 'trade',
+      title: 'Trade could not be saved',
+      body: `Trade with ${trade.user} was not written to the trade log.`
+    })
+    return
   }
-  return false
+  notify({
+    kind: 'trade',
+    title: warn ?? 'Trade tracked',
+    body: `Traded with ${trade.user}: ${gave.map((i) => `${i.count}× ${i.name}`).join(', ')} ⇄ ${got.map((i) => `${i.count}× ${i.name}`).join(', ')}`
+  })
 }
 
 export async function autoTrackTrade(trade: LoggedTrade): Promise<void> {
   if (!getPrefs().autoTrackTrades) return
-  let orders = knownOrders()
-  if (!orders.length) orders = (await getMyOrders()).orders
+  try {
+    await track(trade)
+  } catch (e) {
+    // never lose the trade: keep the raw record even when matching it to orders failed
+    console.error('Auto-track failed:', e)
+    await logSwap(trade, 'Trade could not be matched to orders').catch((e2) =>
+      console.error('Auto-track could not save the raw trade:', e2)
+    )
+  }
+}
+
+async function track(trade: LoggedTrade): Promise<void> {
+  const r = await getMyOrders() // fresh list: the cache is stale after relisting on the website
+  const orders = r.ok ? r.orders : knownOrders()
   const meta = await getItemMeta()
   const entries = Object.values(meta)
   const names = new Map(entries.map((e) => [e.id, e.name]))
@@ -48,43 +85,7 @@ export async function autoTrackTrade(trade: LoggedTrade): Promise<void> {
   }
 
   const plan = planTrade(trade, orders, (id) => names.get(id), partsOf)
-  if (!plan) {
-    // items for items with no net platinum: logged as a swap with both sides, no order touched
-    const items = (list: typeof trade.gave): TradeStack[] =>
-      list.filter((i) => !/^platinum$/i.test(i.name)).map((i) => ({ name: i.name, count: i.count }))
-    const gave = items(trade.gave)
-    const got = items(trade.got)
-    if (!gave.length && !got.length) return
-    const plat = (list: typeof trade.gave): number =>
-      list.filter((i) => /^platinum$/i.test(i.name)).reduce((n, i) => n + i.count, 0)
-    const saved = await saveTrade({
-      at: Date.now(),
-      type: 'trade',
-      itemId: '',
-      platinum: 0,
-      quantity: 1,
-      name: got[0]?.name ?? gave[0]?.name,
-      user: trade.user,
-      gave,
-      got,
-      platGave: plat(trade.gave),
-      platGot: plat(trade.got)
-    })
-    if (!saved) {
-      notify({
-        kind: 'trade',
-        title: 'Trade could not be saved',
-        body: `Trade with ${trade.user} was not written to the trade log.`
-      })
-      return
-    }
-    notify({
-      kind: 'trade',
-      title: 'Trade tracked',
-      body: `Traded with ${trade.user}: ${gave.map((i) => `${i.count}× ${i.name}`).join(', ')} ⇄ ${got.map((i) => `${i.count}× ${i.name}`).join(', ')}`
-    })
-    return
-  }
+  if (!plan) return logSwap(trade)
 
   const closed: string[] = []
   for (const c of plan.closes) {

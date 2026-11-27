@@ -2,15 +2,8 @@ import Dropdown from './Dropdown'
 import { useEffect, useMemo, useState } from 'react'
 import * as cache from '../apiCache'
 import { useInventory } from '../hooks/useInventory'
-import {
-  formatStat,
-  gradeRiven,
-  parseRivens,
-  rivenName,
-  rivenStats,
-  type Grade,
-  type Riven
-} from '../rivens'
+import { ownedWeapons, rivenView, weaponLookup } from '../rivenView'
+import { formatStat, parseRivens, rivenName, rivenStats, type Grade, type Riven } from '../rivens'
 import RivenDetail from './RivenDetail'
 import { usePersisted } from '../hooks/usePersisted'
 import Pic from './Pic'
@@ -42,59 +35,20 @@ export default function RivensPage({ view }: { view: 'unveiled' | 'veiled' }): R
     cache.masteryCatalog().then((c) =>
       // some rivens name the weapon's internal base class ("…/QuadShotgunBase" = Hek), so each
       // weapon is also found under its unique name + "Base"
-      setWeapons(
-        new Map(
-          c.items.flatMap((i): [string, MasteryItem][] => [
-            [i.uniqueName, i],
-            [`${i.uniqueName}Base`, i]
-          ])
-        )
-      )
+      setWeapons(weaponLookup(c.items))
     )
     ;(gradesPromise ??= window.api.getRivenGrades()).then(setRules)
     ;(dataPromise ??= window.api.getRivenData()).then(setData)
   }, [])
   const { unveiled, veiled } = useMemo(() => parseRivens(inv.data?.raw ?? {}), [inv.data])
-  // weapon name, or a readable guess from the path for kitgun/zaw parts the catalog lacks
-  const nameOf = (u: string): string =>
-    weapons.get(u)?.name ??
-    (u.split('/').pop() ?? '').replace(/Weapon$/, '').replace(/([a-z])([A-Z])/g, '$1 $2')
-
   // Weapons you own (all gear sections), to show the variant you actually use.
-  const owned = useMemo(() => {
-    const raw = inv.data?.raw ?? {}
-    const set = new Set<string>()
-    for (const k of ['LongGuns', 'Pistols', 'Melee', 'SpaceGuns', 'SpaceMelee', 'SentinelWeapons'])
-      for (const g of (Array.isArray(raw[k]) ? raw[k] : []) as { ItemType?: string }[])
-        if (g.ItemType) set.add(g.ItemType)
-    return set
-  }, [inv.data])
-  // A riven fits its base weapon and every variant ("Tenet Arca Plasmor", "Hek" -> "Vaykor Hek",
-  // "Lato Prime"): catalog weapons whose name contains the base name as whole words.
-  const variantsOf = (base: string): MasteryItem[] => {
-    const b = weapons.get(base)
-    if (!b) return []
-    const re = new RegExp(`(^|\\s)${b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i')
-    const all = [...new Set(weapons.values())].filter(
-      (w) => w.group === 'weapon' && re.test(w.name)
-    )
-    // owned first, then the base weapon, then by name
-    return all.sort(
-      (x, y) =>
-        Number(owned.has(y.uniqueName)) - Number(owned.has(x.uniqueName)) ||
-        Number(y.uniqueName === base) - Number(x.uniqueName === base) ||
-        x.name.localeCompare(y.name)
-    )
-  }
-  const shownOf = (r: Riven): MasteryItem | undefined =>
-    weapons.get(picked[r.id] ?? '') ?? variantsOf(r.weapon)[0] ?? weapons.get(r.weapon)
-  const shownName = (r: Riven): string => shownOf(r)?.name ?? nameOf(r.weapon)
-  // the sheet may list a variant on its own row; otherwise the base weapon's row applies
-  const ruleOf = (r: Riven): (typeof rules)[string] | undefined =>
-    rules[shownName(r).toLowerCase()] ?? rules[nameOf(r.weapon).toLowerCase()]
-
-  // grade from the community sheet
-  const gradeOf = (r: (typeof unveiled)[number]): Grade | undefined => gradeRiven(r, ruleOf(r))
+  const owned = useMemo(() => ownedWeapons(inv.data?.raw ?? {}), [inv.data])
+  const { nameOf, variantsOf, shownOf, shownName, ruleOf, gradeOf } = rivenView(
+    weapons,
+    owned,
+    rules,
+    picked
+  )
   const q = query.trim().toLowerCase()
   const list = unveiled
     .filter((r) => !gradeFilter || gradeOf(r) === gradeFilter)

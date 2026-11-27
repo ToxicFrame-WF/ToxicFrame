@@ -22,6 +22,10 @@ export interface HelperOutput {
   inventory?: Record<string, unknown>
 }
 
+// Total relics owned (a missing ItemCount counts as 0).
+export const relicTotal = (relics: HelperOutput['relics']): number =>
+  (relics ?? []).reduce((n, r) => n + (r.ItemCount ?? 0), 0)
+
 export function toData(out: HelperOutput, fetchedAt: number): InventoryData {
   const relics: Record<string, Record<string, number>> = {}
   for (const r of out.relics ?? []) {

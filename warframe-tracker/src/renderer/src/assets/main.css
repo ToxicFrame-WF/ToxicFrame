@@ -185,12 +185,6 @@ body {
 :root[data-mode='nightcity'] .rounded-2xl {
   background-color: rgb(12 5 8 / 0.6);
 }
-/* buttons and tabs in small capitals */
-:root[data-mode='nightcity'] button,
-:root[data-mode='nightcity'] select {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 /* anything selected (violet in Release) becomes solid yellow with black text */
 :root[data-mode='nightcity'] [class*='bg-violet-500/20'],
 :root[data-mode='nightcity'] [class*='bg-violet-500/15'],
@@ -407,11 +401,6 @@ body {
 .nc-card .rounded-lg.bg-slate-900 {
   border: 1px solid rgb(255 77 90 / 0.55);
   border-radius: 0;
-}
-.nc-card .text-xs,
-.nc-card .text-\[11px\] {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 /* .nc-quiet: outlined buttons that should stay calm (e.g. unselected tabs beside a selected one) */
 .nc-card-body * button.border:not([class*='bg-violet']):not([aria-pressed='true']):not(.nc-card-body > *):not(.nc-day):not(.nc-quiet) {

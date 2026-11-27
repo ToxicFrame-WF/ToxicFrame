@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
   getRelics: () => ipcRenderer.invoke('relics:list'),
@@ -13,6 +12,12 @@ const api = {
   importAlecaFrame: (text: string) => ipcRenderer.invoke('import:alecaframe', text),
   undoLastImport: () => ipcRenderer.invoke('import:undo'),
   getMyContracts: () => ipcRenderer.invoke('market:myContracts'),
+  getSavedContracts: () => ipcRenderer.invoke('market:savedContracts'),
+  updateContract: (id: string, change: Record<string, unknown>) =>
+    ipcRenderer.invoke('contract:update', id, change),
+  removeContract: (id: string) => ipcRenderer.invoke('contract:remove', id),
+  setAllContractsVisible: (visible: boolean) => ipcRenderer.invoke('contract:allVisible', visible),
+  createContract: (body: unknown) => ipcRenderer.invoke('contract:create', body),
   updateOrder: (id: string, edit: { platinum?: number; quantity?: number; visible?: boolean }) =>
     ipcRenderer.invoke('market:updateOrder', id, edit),
   closeOrder: (id: string, quantity: number) =>
@@ -134,8 +139,8 @@ const api = {
   getItemDetail: (uniqueName: string) => ipcRenderer.invoke('inventory:itemDetail', uniqueName),
   getInventory: () => ipcRenderer.invoke('inventory:get'),
   refreshInventory: () => ipcRenderer.invoke('inventory:refresh'),
-  setInventoryAutoRefresh: (on: boolean) => ipcRenderer.send('inventory:autoRefresh', on),
   getWfmPresence: () => ipcRenderer.invoke('wfm:presence:get'),
+  getWfmPublicStatus: () => ipcRenderer.invoke('wfm:presence:public'),
   setWfmPresence: (s: string) => ipcRenderer.invoke('wfm:presence:set', s),
   setWfmPresenceAuto: (on: boolean, base: string) =>
     ipcRenderer.invoke('wfm:presence:auto', on, base),
@@ -190,14 +195,11 @@ const api = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

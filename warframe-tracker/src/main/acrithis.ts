@@ -2,23 +2,29 @@ import { net } from 'electron'
 import { parseAcrithis } from './wikiText'
 
 // Acrithis's weekly wares are random; players report them on the wiki each week. Read that page:
-// the five items and the date they were seen. Asked once per session.
-let loading: Promise<{ observed: string; items: string[] } | null> | null = null
+// the five items and the date they were seen. Refetched after an hour or a failure.
+type Wares = { observed: string; items: string[] } | null
+let loading: Promise<Wares> | null = null
+let loadedAt = 0
 
-export function getAcrithisWares(): Promise<{ observed: string; items: string[] } | null> {
+export function getAcrithisWares(): Promise<Wares> {
+  if (Date.now() - loadedAt > 3_600_000) loading = null
   return (loading ??= load())
 }
 
-async function load(): Promise<{ observed: string; items: string[] } | null> {
+async function load(): Promise<Wares> {
+  loadedAt = Date.now()
   try {
     const res = await net.fetch(
       'https://wiki.warframe.com/w/Acrithis/Current_Offerings?action=raw',
       { headers: { 'User-Agent': 'ToxicFrame/0.1' } }
     )
     if (!res.ok) throw new Error(String(res.status))
-    return parseAcrithis(await res.text())
+    const r = parseAcrithis(await res.text())
+    if (!r) loadedAt = 0 // nothing parsed: retry next call
+    return r
   } catch {
-    loading = null // try again next time
+    loadedAt = 0 // try again next time
     return null
   }
 }

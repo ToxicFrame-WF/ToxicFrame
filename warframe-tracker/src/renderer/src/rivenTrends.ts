@@ -31,7 +31,12 @@ export function trends(
   const kept = rows.filter((r) => matchListing(r, f))
   const by = new Map<string, number[]>()
   for (const r of rows)
-    for (const a of r.attrs) if (a.positive) by.set(a.slug, [...(by.get(a.slug) ?? []), r.price])
+    for (const a of r.attrs) {
+      if (!a.positive) continue
+      const p = by.get(a.slug)
+      if (p) p.push(r.price)
+      else by.set(a.slug, [r.price])
+    }
   return {
     snaps: snaps.filter((s) => days === null || now - s.t <= days * DAY).length,
     listings: rows.length,

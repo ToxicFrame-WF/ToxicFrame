@@ -1,7 +1,11 @@
 import Dropdown from './Dropdown'
 import NcCard from './NcCard'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import * as cache from '../apiCache'
+import { buildSets } from '../hooks/buildSets'
+import { useMastery } from '../hooks/useMastery'
 import Icon from './Icon'
+import { confirmBox } from './confirmBox'
 import { priceKey, requestPrices, usePriceStore } from '../hooks/priceStore'
 import { usePersisted } from '../hooks/usePersisted'
 import { useSettings } from '../settings'
@@ -10,18 +14,20 @@ import { useInventory } from '../hooks/useInventory'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import PlatIcon from './PlatIcon'
 import Pic from './Pic'
+import WikiIcon from './WikiIcon'
 
+// tab icons: the Inventory page's wiki files; Blueprint.png verified on the wiki 2026-11-27
 const CATS = [
-  { id: 'All', icon: '∞' },
-  { id: 'Parts', icon: '⑂' },
-  { id: 'Relics', icon: '◈' },
-  { id: 'Mods', icon: '⬢' },
-  { id: 'Arcanes', icon: '✦' },
-  { id: 'Misc', icon: '❖' },
-  { id: 'Sets', icon: '⚙' }
+  { id: 'All', icon: 'IconInfinity(xWhite).png' },
+  { id: 'Parts', icon: 'Blueprint.png' },
+  { id: 'Relics', icon: 'IconProjectionT4(xWhite).png' },
+  { id: 'Mods', icon: 'Fusion_Core_horizontal.png' },
+  { id: 'Arcanes', icon: 'CosmeticEnhancer.png' },
+  { id: 'Misc', icon: 'IconModDuplicates(xWhite).png' },
+  { id: 'Sets', icon: 'IconCrafted(xWhite).png' }
 ] as const
 type Cat = (typeof CATS)[number]['id']
-type Sort = 'name' | 'price' | 'quantity'
+type Sort = 'attention' | 'name' | 'price' | 'quantity'
 type TypeFilter = 'all' | 'sell' | 'buy'
 type VisFilter = 'all' | 'visible' | 'hidden'
 
@@ -36,9 +42,13 @@ function categoryOf(tags: string[]): Cat {
   return 'Misc'
 }
 
-const COLS = 'grid grid-cols-[minmax(0,1fr)_10.5rem_5rem_6rem_7rem_17rem] items-center gap-3 px-4'
+const COLS =
+  'grid grid-cols-[minmax(0,1fr)_3.5rem_5rem_9rem_11rem_1.75rem_1.75rem] items-center gap-3 px-3'
+// nc-quiet: inside a Night City card every outlined button would turn red
 const btn =
-  'rounded-lg border border-slate-600 bg-slate-900/60 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800'
+  'nc-quiet rounded-lg border border-slate-600 bg-slate-900/60 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800'
+
+type Row = { order: MyOrder; item?: { slug: string; name: string; tags: string[]; icon?: string } }
 
 let lastOrders: MyOrdersResult | null = null // see the result state below
 
@@ -60,7 +70,7 @@ export default function MyOrders({
   }, [result])
   const [cat, setCat] = usePersisted<Cat>('MyOrders.cat', 'All')
   const [query, setQuery] = useState('')
-  const [sort, setSort] = usePersisted<Sort>('MyOrders.sort', 'name')
+  const [sort, setSort] = usePersisted<Sort>('MyOrders.sort2', 'attention') // new key: the old one kept 'name' from before Attention existed
   const [showFilters, setShowFilters] = useState(false)
   const [typeFilter, setTypeFilter] = usePersisted<TypeFilter>('MyOrders.typeFilter', 'all')
   const [visFilter, setVisFilter] = usePersisted<VisFilter>('MyOrders.visFilter', 'all')
@@ -80,7 +90,7 @@ export default function MyOrders({
     if (busyIds.has(id)) return false // already running for this order
     setBusyIds((s) => new Set(s).add(id))
     setNotice(null)
-    const r = await call()
+    const r = await call().catch(() => ({ ok: false, error: 'Something went wrong.' }))
     setBusyIds((s) => {
       const next = new Set(s)
       next.delete(id)
@@ -90,6 +100,7 @@ export default function MyOrders({
       setNotice(r.error ?? 'That did not work.')
       return false
     }
+    if (r.error) setNotice(r.error) // done, but with a warning (e.g. closed but not logged)
     setResult((prev) => (prev ? { ...prev, orders: apply(prev.orders) } : prev))
     return true
   }
@@ -117,11 +128,14 @@ export default function MyOrders({
       patch(o.id, { quantity: o.quantity + 1 })
     )
   }
-  const remove = (o: MyOrder, name: string): void => {
+  const remove = async (o: MyOrder, name: string): Promise<void> => {
     if (
-      !window.confirm(
-        `Delete your ${o.type} order for ${name}? This removes it from warframe.market.`
-      )
+      !(await confirmBox({
+        title: 'Delete order',
+        message: `Delete your ${o.type} order for ${name}? This removes it from warframe.market.`,
+        confirm: 'Delete',
+        danger: true
+      }))
     )
       return
     void act(
@@ -167,9 +181,12 @@ export default function MyOrders({
     let alive = true
     let fresh = false
     // the saved copy shows at once; the download replaces it when it arrives
-    window.api.getSavedOrders().then((saved) => {
-      if (alive && !fresh && saved) setResult((cur) => cur ?? saved)
-    })
+    window.api
+      .getSavedOrders()
+      .then((saved) => {
+        if (alive && !fresh && saved) setResult((cur) => cur ?? saved)
+      })
+      .catch(() => {})
     window.api
       .getMyOrders()
       .then((r) => {
@@ -211,10 +228,40 @@ export default function MyOrders({
 
   const metaReady = byId.size > 0
 
+  // 7-day median sale price per item (only items the market scan has covered, not per rank)
+  const [stats, setStats] = useState<MarketStats['items']>({})
+  useEffect(() => {
+    void window.api
+      .getMarketStats()
+      .then((s) => setStats(s.items))
+      .catch(() => {})
+  }, [])
+  // ranked orders get none: the stat mixes all ranks, so a maxed mod would be priced like rank 0
+  const medianOf = (item?: { slug: string }, rank?: number): number | undefined => {
+    const m = item && rank == null ? stats[item.slug]?.med7 : undefined
+    return m && m > 0 ? Math.round(m) : undefined
+  }
+
+  // your warframe.market status: the app's own pick, else the public profile's
+  const [live, setLive] = useState<WfmPresence | null>(null)
+  const [pub, setPub] = useState<WfmPresence | 'offline' | null>(null)
+  useEffect(() => {
+    void window.api.getWfmPresence().then(setLive)
+    void window.api.getWfmPublicStatus().then(setPub)
+    return window.api.onWfmPresence(setLive)
+  }, [])
+  const presence = live ?? pub
+
   // Compare each sell order against what you actually own (from the game inventory).
   const inv = useInventory()
   const invItems = useInventoryItems()
   const haveInventory = Boolean(inv.data)
+  // set counts come from the same calculation as the Inventory page's Sets tab
+  const [invMeta, setInvMeta] = useState<InventoryMeta>({})
+  useEffect(() => {
+    cache.inventoryMeta().then(setInvMeta)
+  }, [])
+  const mastery = useMastery()
   const ownedBySlug = useMemo(() => {
     const m = new Map<string, number>()
     if (!inv.data) return m
@@ -226,37 +273,63 @@ export default function MyOrders({
       ...invItems.misc
     ])
       if (r.slug) m.set(r.slug, (m.get(r.slug) ?? 0) + r.count)
+    const byItem = new Map(mastery.rows.map((r) => [r.item.uniqueName, r]))
+    for (const s of buildSets(invMeta, invItems.parts, byItem)) m.set(s.slug!, s.count)
     return m
-  }, [invItems, inv.data])
+  }, [invItems, inv.data, invMeta, mastery.rows])
+  // game images like the Inventory page; warframe.market's icons are generic for arcanes
+  const imageBySlug = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const e of Object.values(invMeta)) if (e.slug && e.image) m.set(e.slug, e.image)
+    for (const r of mastery.rows)
+      if (r.item.imageName)
+        m.set(`${r.item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_set`, r.item.imageName)
+    return m
+  }, [invMeta, mastery.rows])
+  const iconOf = (item?: { slug: string; icon?: string }): string | undefined =>
+    (item && imageBySlug.get(item.slug)) ?? item?.icon
   const ownedOf = (slug?: string): number => (slug ? (ownedBySlug.get(slug) ?? 0) : 0)
   const invShort = (order: MyOrder, item?: { slug: string }): boolean =>
     haveInventory && order.type === 'sell' && !!item && ownedOf(item.slug) < order.quantity
+  const lowestOf = (o: MyOrder, item?: { slug: string }): number | null | undefined => {
+    const p = item ? get(priceKey(item.slug, o.rank)) : undefined
+    return p && p !== 'error' ? (p.lowest ?? p.price) : undefined
+  }
+  const gapOf = (o: MyOrder, lowest?: number | null): number =>
+    o.type === 'sell' && lowest != null && o.platinum > lowest ? o.platinum - lowest : 0
+  const gapRow = (r: Row): number => gapOf(r.order, lowestOf(r.order, r.item))
+  const needsAttn = (r: Row): boolean => gapRow(r) > 0 || invShort(r.order, r.item)
 
   const missing = metaReady ? rows.filter((r) => !r.item).length : 0
-  const missingInv = haveInventory ? rows.filter((r) => invShort(r.order, r.item)).length : 0
+  const warnCount = haveInventory ? rows.filter((r) => invShort(r.order, r.item)).length : missing
+  const undercutCount = rows.filter((r) => r.item && gapRow(r) > 0).length
+  const sellCount = rows.filter((r) => r.order.type === 'sell').length
+  const buyCount = rows.length - sellCount
   const sellValue = rows
     .filter((r) => r.order.type === 'sell')
     .reduce((s, r) => s + r.order.platinum * r.order.quantity, 0)
-  const buyValue = rows
-    .filter((r) => r.order.type === 'buy')
-    .reduce((s, r) => s + r.order.platinum * r.order.quantity, 0)
   const visibleCount = rows.filter((r) => r.order.visible).length
+  const catCount = (c: Cat): number =>
+    rows.filter((r) => r.item && (c === 'All' || categoryOf(r.item.tags) === c)).length
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return rows
-      .filter((r) => r.item && (cat === 'All' || categoryOf(r.item.tags) === cat))
-      .filter((r) => !q || r.item!.name.toLowerCase().includes(q))
-      .filter((r) => typeFilter === 'all' || r.order.type === typeFilter)
-      .filter((r) => visFilter === 'all' || (visFilter === 'visible') === r.order.visible)
-      .sort((a, b) =>
-        sort === 'price'
-          ? b.order.platinum - a.order.platinum
-          : sort === 'quantity'
-            ? b.order.quantity - a.order.quantity
+  const q = query.trim().toLowerCase()
+  const shown = rows
+    .filter((r) => r.item && (cat === 'All' || categoryOf(r.item.tags) === cat))
+    .filter((r) => !q || r.item!.name.toLowerCase().includes(q))
+    .filter((r) => typeFilter === 'all' || r.order.type === typeFilter)
+    .filter((r) => visFilter === 'all' || (visFilter === 'visible') === r.order.visible)
+    .sort((a, b) =>
+      sort === 'price'
+        ? b.order.platinum - a.order.platinum
+        : sort === 'quantity'
+          ? b.order.quantity - a.order.quantity
+          : sort === 'attention'
+            ? // undercut first (biggest gap), then inventory-short, then the rest
+              Number(needsAttn(b)) - Number(needsAttn(a)) ||
+              gapRow(b) - gapRow(a) ||
+              a.item!.name.localeCompare(b.item!.name)
             : a.item!.name.localeCompare(b.item!.name)
-      )
-  }, [rows, cat, query, sort, typeFilter, visFilter])
+    )
 
   if (result && !result.ok) {
     const needsLink = result.error?.startsWith('Link your') || result.error?.includes('expired')
@@ -287,73 +360,296 @@ export default function MyOrders({
 
   const pill = (active: boolean): string =>
     `rounded-lg px-3 py-1 text-xs ${active ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`
+  const iconBtn =
+    'flex h-7 w-7 items-center justify-center rounded-md text-slate-300 hover:bg-slate-800 disabled:opacity-40'
+  const numBtn = 'rounded px-1 font-bold hover:bg-slate-700/70 disabled:cursor-default'
+
+  const renderRow = ({ order, item }: Row): React.JSX.Element => {
+    const lowest = lowestOf(order, item)
+    const gap = gapOf(order, lowest)
+    const undercut = gap > 0
+    const busy = busyIds.has(order.id)
+    const editing = editId === order.id
+    const sell = order.type === 'sell'
+    const median = sell ? medianOf(item, order.rank) : undefined
+    const key = (e: React.KeyboardEvent): void => {
+      if (e.key === 'Enter') void saveEdit(order)
+      if (e.key === 'Escape') setEditId(null)
+    }
+    const input = (value: string, set: (v: string) => void, auto?: boolean): React.JSX.Element => (
+      <input
+        autoFocus={auto}
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        onKeyDown={key}
+        inputMode="numeric"
+        className="w-full rounded-md bg-slate-800 px-1 py-0.5 text-center ring-1 ring-violet-500 outline-none"
+      />
+    )
+    return (
+      // no NcCard frame: its name tab pulls the name out of the row and it reddens every button
+      <div key={order.id}>
+        <div
+          className={`rounded-lg border border-slate-700/70 bg-slate-900/40 text-sm hover:border-slate-600 ${
+            undercut ? 'border-l-2 border-l-amber-400 bg-amber-500/5' : ''
+          }`}
+        >
+          <div className={`${COLS} py-1.5`}>
+            {/* item */}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 rounded-md bg-slate-800/80 p-0.5">
+                <Pic src={iconOf(item)} fallback={item?.icon} size={32} letter={item?.name[0]} />
+              </span>
+              <span className="truncate font-semibold">{item?.name}</span>
+              {order.rank != null && (
+                <span className="shrink-0 text-xs text-slate-400">R{order.rank}</span>
+              )}
+              <span
+                className={`shrink-0 rounded border px-1 text-[10px] leading-4 font-semibold ${
+                  sell
+                    ? 'border-rose-400/40 text-rose-300'
+                    : 'border-emerald-400/40 text-emerald-300'
+                }`}
+              >
+                {sell ? 'SELL' : 'BUY'}
+              </span>
+            </span>
+
+            {/* qty, price: click to edit */}
+            <span className="text-center">
+              {editing ? (
+                input(editQty, setEditQty, true)
+              ) : (
+                <button
+                  disabled={busy}
+                  onClick={() => startEdit(order)}
+                  title="Click to edit"
+                  className={numBtn}
+                >
+                  {order.quantity}
+                </button>
+              )}
+            </span>
+            <span className="text-center">
+              {editing ? (
+                input(editPrice, setEditPrice)
+              ) : (
+                <button
+                  disabled={busy}
+                  onClick={() => startEdit(order)}
+                  title="Click to edit"
+                  className={`${numBtn} inline-flex items-center gap-1`}
+                >
+                  {order.platinum}
+                  <PlatIcon size={14} />
+                </button>
+              )}
+            </span>
+
+            {/* market */}
+            <span className="text-center text-xs font-semibold">
+              {sell ? (
+                lowest != null ? (
+                  undercut ? (
+                    <span className="text-amber-300" title="Someone is selling cheaper">
+                      lowest {lowest}p (+{gap})
+                    </span>
+                  ) : (
+                    <span className="text-emerald-300">
+                      {order.platinum === lowest
+                        ? '= lowest'
+                        : `you're cheapest (−${lowest - order.platinum})`}
+                    </span>
+                  )
+                ) : (
+                  <span className="text-slate-400">
+                    {item && get(priceKey(item.slug, order.rank)) === 'error' ? '!' : '…'}
+                  </span>
+                )
+              ) : (
+                // shortcut: no highest-buy price yet, add when priceStore has it
+                <span className="text-slate-500">—</span>
+              )}
+              {median != null && (
+                <span className="block text-[10px] font-normal text-slate-400">
+                  week median {median}p
+                </span>
+              )}
+            </span>
+
+            {/* actions */}
+            <span className="flex items-center justify-end gap-1.5">
+              {editing ? (
+                <>
+                  <button
+                    disabled={busy}
+                    onClick={() => void saveEdit(order)}
+                    className={`${btn} text-emerald-300`}
+                  >
+                    Save
+                  </button>
+                  <button onClick={() => setEditId(null)} className={btn}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  {undercut && (
+                    <button
+                      disabled={busy}
+                      onClick={() => matchLowest(order, lowest!)}
+                      title={`Lower your price to ${lowest}${
+                        median != null && lowest! < median * 0.85
+                          ? `. The lowest is well under the 7-day median (${median}p): ⋯ > Set to median`
+                          : ''
+                      }`}
+                      className="rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-slate-900 hover:bg-amber-400 disabled:opacity-50"
+                    >
+                      Match {lowest}
+                    </button>
+                  )}
+                  {sell && (
+                    <button
+                      disabled={busy}
+                      onClick={() => soldOne(order)}
+                      title="Record one sale (closes 1 unit)"
+                      className={`${btn} text-emerald-300 disabled:opacity-40`}
+                    >
+                      Sold 1
+                    </button>
+                  )}
+                </>
+              )}
+            </span>
+
+            {/* menu */}
+            <RowMenu
+              disabled={busy}
+              className={iconBtn}
+              items={[
+                ['Edit', () => startEdit(order)],
+                ['+1 quantity', () => addOne(order)],
+                ...(median != null && median !== order.platinum
+                  ? ([[`Set to median (${median}p)`, () => matchLowest(order, median)]] as [
+                      string,
+                      () => void
+                    ][])
+                  : []),
+                ['Compare', () => item && onCompare(item.slug, rankAware ? order.rank : undefined)],
+                ['Delete', () => remove(order, item?.name ?? 'this item'), true]
+              ]}
+            />
+
+            {/* visibility */}
+            <button
+              disabled={busy}
+              aria-pressed={order.visible}
+              onClick={() => setVisible(order, !order.visible)}
+              title={order.visible ? 'Visible on warframe.market' : 'Hidden'}
+              className={`${iconBtn} ${order.visible ? 'text-emerald-300' : 'text-slate-500 line-through'}`}
+            >
+              <Icon name="eye" />
+            </button>
+          </div>
+          {invShort(order, item) && (
+            <div className="flex items-center justify-between border-t border-slate-700/60 px-3 py-1 text-[11px]">
+              <span className="flex items-center gap-1.5 text-amber-300/90">
+                <span aria-hidden>⚠</span> {order.quantity} listed, {ownedOf(item?.slug)} found in
+                your inventory
+              </span>
+              <button onClick={() => startEdit(order)} className="text-slate-300 hover:text-white">
+                Review quantity ›
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // one card per group; amber for the group that needs you
+  const group = (title: string, list: Row[], accent?: string): React.JSX.Element => (
+    <NcCard title={`${title} · ${list.length}`} accent={accent}>
+      <div className="flex flex-col gap-1.5 p-2">{list.map((r) => renderRow(r))}</div>
+    </NcCard>
+  )
+  const attn = sort === 'attention' ? shown.filter(needsAttn) : []
 
   return (
     <div className="p-5 text-slate-100">
       {/* header */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <h1 className="mr-1 text-2xl font-bold">My orders</h1>
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <span className="rounded bg-rose-500/20 px-2 py-0.5 text-xs text-rose-300 ring-1 ring-rose-400/40">
-            Sell value
-          </span>
-          <span className="inline-flex items-center gap-1">
-            {sellValue}
-            <PlatIcon size={16} />
-          </span>
-        </span>
-        <span className="flex items-center gap-2 text-sm font-semibold">
-          <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300 ring-1 ring-emerald-400/40">
-            Buy value
-          </span>
-          <span className="inline-flex items-center gap-1">
-            {buyValue}
-            <PlatIcon size={16} />
-          </span>
-        </span>
-        <span className="mx-auto text-sm text-slate-300">
-          <Icon name="eye" />{' '}
+        <span className="inline-flex items-center gap-1 text-sm text-slate-300">
+          Listed <b className="text-slate-100">{sellValue}</b>
+          <PlatIcon size={14} /> · {sellCount} sell · {buyCount} buy ·{' '}
           <b className="text-slate-100">
             {visibleCount}/{rows.length}
           </b>{' '}
           visible
         </span>
-        {haveInventory
-          ? missingInv > 0 && (
-              <span
-                title="Sell orders where you own fewer than you have listed"
-                className="rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-1 text-xs text-amber-200"
-              >
-                ⚠ {missingInv} order{missingInv > 1 ? 's' : ''} with missing items
-              </span>
-            )
-          : missing > 0 && (
-              <span className="rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-1 text-xs text-amber-200">
-                ⚠ {missing} order{missing > 1 ? 's' : ''} with missing items
-              </span>
-            )}
-        <button
-          onClick={load}
-          disabled={loading}
-          title="Reload your orders"
-          className="rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
-        >
-          ⟳
-        </button>
-        <button
-          onClick={() => setBulkOpen(true)}
-          disabled={!rows.some((r) => r.order.type === 'sell')}
-          title="Match the lowest in-game price on many sell orders at once"
-          className={`${btn} px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50`}
-        >
-          ⚟ Bulk actions
-        </button>
+        {warnCount > 0 && (
+          <span
+            title="Sell orders where you own fewer than you have listed"
+            className="rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-1 text-xs text-amber-200"
+          >
+            ⚠ {warnCount} order{warnCount > 1 ? 's' : ''} with missing items
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            onClick={load}
+            disabled={loading}
+            title="Reload your orders"
+            className="rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-50"
+          >
+            ⟳
+          </button>
+          <button
+            onClick={() => setBulkOpen(true)}
+            disabled={undercutCount === 0}
+            title="Match the lowest in-game price on many sell orders at once"
+            className={`${btn} px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50`}
+          >
+            Match undercut ({undercutCount})
+          </button>
+        </span>
       </div>
+
+      {presence && (
+        <div
+          className={`mb-2 flex items-center gap-3 rounded-lg border px-3 py-1.5 text-xs ${
+            presence === 'online' || presence === 'ingame'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+              : 'border-amber-500/60 bg-amber-500/10 text-amber-200'
+          }`}
+        >
+          {presence === 'ingame' ? (
+            'In game on warframe.market'
+          ) : presence === 'online' ? (
+            'Online on warframe.market'
+          ) : (
+            <>
+              <span>
+                You&apos;re offline/invisible on warframe.market — buyers can&apos;t see your orders
+              </span>
+              <button
+                onClick={() =>
+                  void window.api.setWfmPresence('online').then(() => setPub('online'))
+                }
+                className={`${btn} ml-auto`}
+              >
+                Go online
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* tabs, search, sort, filters */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1">
-          {CATS.map((c) => (
+          {CATS.filter((c) => c.id === 'All' || catCount(c.id) > 0).map((c) => (
             <button
               key={c.id}
               onClick={() => setCat(c.id)}
@@ -363,8 +659,9 @@ export default function MyOrders({
                   : 'text-slate-300 hover:bg-slate-800'
               }`}
             >
-              <span className="text-base leading-none">{c.icon}</span>
+              <WikiIcon file={c.icon} title={c.id} color="currentColor" size={18} />
               {c.id}
+              <span className="text-xs text-slate-400">{catCount(c.id)}</span>
             </button>
           ))}
         </div>
@@ -377,19 +674,22 @@ export default function MyOrders({
               placeholder="Search"
               className="w-28 bg-transparent outline-none placeholder:text-slate-400"
             />
-            <button
-              onClick={() => setQuery('')}
-              title="Clear search"
-              className="text-slate-400 hover:text-slate-200"
-            >
-              <Icon name="trash" />
-            </button>
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                title="Clear search"
+                className="text-slate-400 hover:text-slate-200"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <Dropdown
             label="Sort"
             value={sort}
             onChange={(v) => setSort(v as Sort)}
             options={[
+              { value: 'attention', label: 'Attention' },
               { value: 'name', label: 'Name' },
               { value: 'price', label: 'Price' },
               { value: 'quantity', label: 'Quantity' }
@@ -430,13 +730,15 @@ export default function MyOrders({
       )}
 
       {/* column headers */}
-      <div className={`${COLS} border-t border-slate-700/70 py-2 text-xs text-slate-400`}>
+      {/* mx: lines up with rows inside the group cards (their frame + padding) */}
+      <div className={`${COLS} mx-2.5 border-t border-slate-700/70 py-1.5 text-xs text-slate-400`}>
         <span>Item</span>
-        <span className="text-center">Visibility</span>
-        <span className="text-center">Quantity</span>
-        <span className="text-center">Price / item</span>
-        <span className="text-center">Lowest sell</span>
-        <span className="text-center">Actions</span>
+        <span className="text-center">Qty</span>
+        <span className="text-center">Your price</span>
+        <span className="text-center">Market</span>
+        <span className="text-right">Action</span>
+        <span />
+        <span />
       </div>
 
       {notice && (
@@ -460,219 +762,25 @@ export default function MyOrders({
         </p>
       )}
 
-      <div className="flex flex-col gap-2">
-        {shown.map(({ order, item }) => {
-          const price = item ? get(priceKey(item.slug, order.rank)) : undefined
-          const lowest = price && price !== 'error' ? (price.lowest ?? price.price) : undefined
-          const undercut = order.type === 'sell' && lowest != null && order.platinum > lowest
-          const busy = busyIds.has(order.id)
-          const editing = editId === order.id
-          return (
-            <NcCard key={order.id} title={item?.name ?? ''}>
-              <div className="rounded-xl border border-slate-700/70 bg-slate-900/40 text-sm hover:border-slate-600">
-                <div className={`${COLS} py-2.5`}>
-                  {/* item */}
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="shrink-0 rounded-lg bg-slate-800/80 p-1">
-                      <Pic src={item?.icon} size={40} letter={item?.name[0]} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="nc-name block truncate font-semibold">{item?.name}</span>
-                      <span className="mt-1 flex items-center gap-2 text-xs">
-                        <span
-                          className={`rounded px-1.5 py-0.5 font-medium ring-1 ${
-                            order.type === 'sell'
-                              ? 'bg-rose-500/20 text-rose-300 ring-rose-400/40'
-                              : 'bg-emerald-500/20 text-emerald-300 ring-emerald-400/40'
-                          }`}
-                        >
-                          {order.type === 'sell' ? 'Sell' : 'Buy'}
-                        </span>
-                        {order.rank != null && (
-                          <span className="text-slate-400">Rank: {order.rank}</span>
-                        )}
-                      </span>
-                    </span>
-                  </span>
-
-                  {/* visibility */}
-                  <span className="flex overflow-hidden rounded-lg border border-slate-600 text-xs font-medium">
-                    <button
-                      disabled={busy}
-                      onClick={() => setVisible(order, true)}
-                      className={`flex flex-1 items-center justify-center gap-1 px-2 py-1.5 ${
-                        order.visible
-                          ? 'bg-emerald-600/30 text-emerald-200'
-                          : 'text-slate-400 hover:bg-slate-800'
-                      }`}
-                    >
-                      <Icon name="eye" /> Visible
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => setVisible(order, false)}
-                      className={`flex flex-1 items-center justify-center px-2 py-1.5 ${
-                        !order.visible
-                          ? 'bg-slate-600/50 text-slate-100'
-                          : 'text-slate-400 hover:bg-slate-800'
-                      }`}
-                    >
-                      Hide
-                    </button>
-                  </span>
-
-                  {/* quantity */}
-                  {editing ? (
-                    <input
-                      value={editQty}
-                      onChange={(e) => setEditQty(e.target.value)}
-                      inputMode="numeric"
-                      className="w-full rounded-lg bg-slate-800 px-2 py-1 text-center ring-1 ring-violet-500 outline-none"
-                    />
-                  ) : (
-                    <span className="text-center text-base font-bold">{order.quantity}</span>
-                  )}
-
-                  {/* price */}
-                  {editing ? (
-                    <input
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
-                      inputMode="numeric"
-                      className="w-full rounded-lg bg-slate-800 px-2 py-1 text-center ring-1 ring-violet-500 outline-none"
-                    />
-                  ) : (
-                    <span className="flex flex-col items-center">
-                      <span className="inline-flex items-center justify-center gap-1 text-base font-bold">
-                        {order.platinum}
-                        <PlatIcon size={16} />
-                      </span>
-                      <PriceVsLowest order={order} lowest={lowest} />
-                    </span>
-                  )}
-
-                  {/* lowest sell */}
-                  <span className="flex items-center justify-center gap-2">
-                    <button
-                      disabled={
-                        busy || order.type !== 'sell' || lowest == null || lowest >= order.platinum
-                      }
-                      onClick={() => lowest != null && matchLowest(order, lowest)}
-                      title={
-                        lowest != null
-                          ? `Lower your price to ${lowest}`
-                          : 'No lowest price to match'
-                      }
-                      className={`${btn} px-2 disabled:cursor-not-allowed disabled:opacity-30`}
-                    >
-                      ‹
-                    </button>
-                    <span className="text-center leading-tight">
-                      <span
-                        className={`inline-flex items-center gap-1 font-bold ${undercut ? 'text-amber-300' : ''}`}
-                        title={undercut ? 'Someone is selling cheaper' : undefined}
-                      >
-                        {order.type !== 'sell' ? (
-                          '—'
-                        ) : lowest != null ? (
-                          <>
-                            {lowest}
-                            <PlatIcon size={14} />
-                          </>
-                        ) : price === 'error' ? (
-                          '!'
-                        ) : (
-                          '…'
-                        )}
-                      </span>
-                      <button
-                        disabled={!item}
-                        onClick={() =>
-                          item && onCompare(item.slug, rankAware ? order.rank : undefined)
-                        }
-                        title="Show all orders for this item in the Buy / Sell tab"
-                        className="block w-full text-xs text-slate-300 hover:text-violet-300"
-                      >
-                        Compare ›
-                      </button>
-                    </span>
-                  </span>
-
-                  {/* actions */}
-                  <span className="flex items-center justify-end gap-1.5">
-                    {editing ? (
-                      <>
-                        <button
-                          disabled={busy}
-                          onClick={() => void saveEdit(order)}
-                          className={`${btn} text-emerald-300`}
-                        >
-                          Save
-                        </button>
-                        <button onClick={() => setEditId(null)} className={btn}>
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          disabled={busy || order.type !== 'sell'}
-                          onClick={() => soldOne(order)}
-                          title="Record one sale (closes 1 unit)"
-                          className={`${btn} text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40`}
-                        >
-                          ✓ Sold 1
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => startEdit(order)}
-                          title="Edit price and quantity"
-                          className={btn}
-                        >
-                          ✎ Edit
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => addOne(order)}
-                          title="Add one to the quantity"
-                          className={btn}
-                        >
-                          +1
-                        </button>
-                        <button
-                          disabled={busy}
-                          onClick={() => remove(order, item?.name ?? 'this item')}
-                          title="Delete this order"
-                          className={`${btn} text-rose-300`}
-                        >
-                          <Icon name="trash" />
-                        </button>
-                      </>
-                    )}
-                  </span>
-                </div>
-                {invShort(order, item) && (
-                  <div className="flex items-center justify-between border-t border-slate-700/60 px-4 py-1.5 text-xs">
-                    <span className="flex items-center gap-1.5 text-amber-300/90">
-                      <span aria-hidden>⚠</span> {order.quantity} listed, {ownedOf(item?.slug)}{' '}
-                      found in your inventory
-                    </span>
-                    <button
-                      onClick={() => startEdit(order)}
-                      className="flex items-center gap-1 text-slate-300 hover:text-white"
-                    >
-                      Review quantity ›
-                    </button>
-                  </div>
-                )}
-              </div>
-            </NcCard>
-          )
-        })}
+      <div className="flex flex-col gap-4">
+        {sort === 'attention' ? (
+          <>
+            {attn.length > 0 && group('Needs attention', attn, '#f59e0b')}
+            {shown.length > attn.length &&
+              group(
+                'OK',
+                shown.filter((r) => !attn.includes(r))
+              )}
+          </>
+        ) : (
+          shown.length > 0 && group('Orders', shown)
+        )}
       </div>
       {bulkOpen && (
         <BulkMatch
-          rows={rows.filter((r) => r.order.type === 'sell' && r.item)}
+          rows={rows
+            .filter((r) => r.order.type === 'sell' && r.item)
+            .map((r) => ({ ...r, item: { ...r.item!, icon: iconOf(r.item) } }))}
           onApplied={(id, platinum) =>
             setResult((prev) =>
               prev ? { ...prev, orders: patch(id, { platinum })(prev.orders) } : prev
@@ -741,12 +849,24 @@ function BulkMatch({
     setRunning(false)
   }
 
+  useEffect(() => {
+    if (running) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [running, onClose])
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={running ? undefined : onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Match lowest price"
         className="nc-dialog-card flex max-h-full w-full max-w-2xl flex-col rounded-lg bg-slate-800 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -757,6 +877,7 @@ function BulkMatch({
               <button
                 onClick={onClose}
                 disabled={running}
+                aria-label="Close"
                 className="text-xl text-slate-400 hover:text-white disabled:opacity-40"
               >
                 ×
@@ -845,33 +966,65 @@ function BulkMatch({
   )
 }
 
-// Sell orders: how your price compares to the cheapest seller ("+11" above it, "lowest" when
-// you match it, "−3" below it), so an order that won't sell stands out without comparing columns.
-function PriceVsLowest({
-  order,
-  lowest
+// Minimal "⋯" popover; closes on an outside click or Escape.
+function RowMenu({
+  items,
+  disabled,
+  className
 }: {
-  order: MyOrder
-  lowest?: number | null
-}): React.JSX.Element | null {
-  if (order.type !== 'sell' || lowest == null) return null
-  const diff = order.platinum - lowest
-  const [text, cls, title] =
-    diff > 0
-      ? [`+${diff}`, 'text-rose-300 border-rose-400/50', `${diff} above the cheapest seller`]
-      : diff === 0
-        ? ['lowest', 'text-emerald-300 border-emerald-400/50', 'Same as the cheapest seller']
-        : [
-            `−${-diff}`,
-            'text-emerald-300 border-emerald-400/50',
-            `${-diff} below the cheapest seller`
-          ]
+  items: [string, () => void, boolean?][]
+  disabled?: boolean
+  className: string
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const down = (e: MouseEvent): void => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', down)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', down)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
   return (
-    <span
-      title={title}
-      className={`mt-0.5 rounded border px-1 text-[10px] font-semibold leading-tight ${cls}`}
-    >
-      {text}
+    <span ref={ref} className="relative">
+      <button
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More"
+        className={className}
+      >
+        ⋯
+      </button>
+      {open && (
+        <span
+          role="menu"
+          className="absolute right-0 z-20 mt-1 flex w-36 flex-col rounded-lg border border-slate-600 bg-slate-900 py-1 text-xs shadow-xl"
+        >
+          {items.map(([label, run, danger]) => (
+            <button
+              key={label}
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                run()
+              }}
+              className={`px-3 py-1.5 text-left hover:bg-slate-800 ${danger ? 'text-rose-300' : ''}`}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      )}
     </span>
   )
 }

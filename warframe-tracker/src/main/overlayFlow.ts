@@ -62,6 +62,7 @@ export async function watchScreen(): Promise<void> {
   const rivenUp = getOverlayState().panel === 'riven' // a hotkey-opened panel must hide on alt-tab
   if (
     watching ||
+    !prefs.setupDone || // no screen capture before the first-run screen is accepted
     (!prefs.overlayRecommend && !prefs.overlayRewards && !prefs.overlayRiven && !rivenUp)
   )
     return
@@ -108,6 +109,7 @@ export async function watchScreen(): Promise<void> {
 }
 
 export function showRecommend(): void {
+  if (!getPrefs().setupDone) return
   if (getOverlayState().panel === 'recommend') return
   showOverlay('recommend', { era: screenNow === 'picker' ? era : null })
 }
@@ -138,6 +140,7 @@ export function rewardLayout(
 // drop tables, so a match is always a real reward with its market slug.
 let rewardsTimer: ReturnType<typeof setTimeout> | undefined
 export async function showRewards(image?: Electron.NativeImage, known?: GameArea): Promise<void> {
+  if (!getPrefs().setupDone) return
   showOverlay('rewards', { reading: true })
   // the 15 s pick countdown is over by then, whether or not the log has said so yet
   clearTimeout(rewardsTimer)

@@ -46,6 +46,9 @@ interface RawMasterable {
 }
 
 let cache: MasteryCatalog | null = null
+export const resetMasteryCache = (): void => {
+  cache = null
+}
 
 function groupOf(pc: string): MasteryGroup {
   if (FRAME_CATS.includes(pc)) return 'frame'

@@ -258,3 +258,85 @@ export function weekTicks(o: {
     netracellMax: o.both ? netracellRuns(true, true) : netracellRuns(ran('deep'), ran('temporal'))
   }
 }
+
+// ---- what is done this week (shared by the Weekly page and the app-wide streak recorder) ----
+export interface WeeklyTicks {
+  week: string
+  on: string[]
+  off: string[]
+  runs?: Record<string, number> // counter tasks: runs done this week
+}
+export type WeeklyStart = { week: string; counts: WeeklyCounts } | null
+export interface WeekStatus {
+  on: Set<string>
+  off: Set<string>
+  savedRuns: Record<string, number>
+  tierOf: (id: string) => number
+  ticked: (id: string) => boolean
+  autoTicks: (id: string) => boolean
+  maxOf: (t: WeeklyTask) => number
+  runsOf: (t: WeeklyTask) => number
+  isDone: (t: WeeklyTask) => boolean
+  tasks: WeeklyTask[]
+  counted: WeeklyTask[] // tasks not hidden
+  groupDone: (g: string) => boolean
+}
+export function weekStatus(s: {
+  week: string
+  counts: WeeklyCounts | null
+  start: WeeklyStart
+  ticks: WeeklyTicks
+  hidden: string[]
+  custom: { id: string; label: string }[]
+  bothArchimedeas: boolean
+  eliteRewards: boolean
+}): WeekStatus {
+  // the comparison point only counts when it is from this week
+  const base = s.counts && s.start?.week === s.week ? s.start.counts : null
+  const now = s.counts
+  // last week's ticks don't count
+  const on = new Set(s.ticks.week === s.week ? s.ticks.on : [])
+  const off = new Set(s.ticks.week === s.week ? s.ticks.off : [])
+  const auto = new Set(base && now ? autoDone(base, now) : [])
+  const tierOf = (id: string): number =>
+    s.eliteRewards && (id === 'deep' || id === 'temporal') && base && now
+      ? eliteTier(id, base, now)
+      : 0
+  const { ticked, autoTicks, netracellMax } = weekTicks({
+    on,
+    off,
+    auto,
+    tiers: { deep: tierOf('deep'), temporal: tierOf('temporal') },
+    elite: s.eliteRewards,
+    both: s.bothArchimedeas
+  })
+  const maxOf = (t: WeeklyTask): number => (t.id === 'netracells' ? netracellMax : (t.max ?? 0))
+  const savedRuns = s.ticks.week === s.week && typeof s.ticks.runs === 'object' ? s.ticks.runs : {}
+  const autoIcebind = base && now ? icebindRuns(base, now) : 0
+  const runsOf = (t: WeeklyTask): number =>
+    Math.min(Math.max(savedRuns[t.id] ?? 0, t.id === 'icebind' ? autoIcebind : 0), maxOf(t))
+  const isDone = (t: WeeklyTask): boolean => (t.max ? runsOf(t) >= maxOf(t) : ticked(t.id))
+  const tasks: WeeklyTask[] = [
+    ...WEEKLY_TASKS,
+    ...s.custom.map((c) => ({ id: c.id, label: c.label, group: 'Custom' }))
+  ]
+  const counted = tasks.filter((t) => !s.hidden.includes(t.id))
+  const groupDone = (g: string): boolean => {
+    const l = counted.filter((t) => t.group === g)
+    return l.length > 0 && l.every(isDone)
+  }
+  return {
+    on,
+    off,
+    savedRuns,
+    tierOf,
+    ticked,
+    autoTicks,
+    maxOf,
+    runsOf,
+    isDone,
+    tasks,
+    counted,
+    groupDone
+  }
+}

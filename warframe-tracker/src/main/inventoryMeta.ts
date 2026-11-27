@@ -667,3 +667,10 @@ export function getItemDetail(uniqueName: string): ItemDetail | null {
     }
   }
 }
+
+// cached rows hold image URLs; drop them when the browse.wf icon map arrives (first run)
+export function resetInventoryMetaImages(): void {
+  cache = null
+  resourceCache = null
+  shardCache = null
+}

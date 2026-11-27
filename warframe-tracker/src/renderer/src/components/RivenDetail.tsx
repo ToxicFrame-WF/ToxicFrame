@@ -33,6 +33,8 @@ export default function RivenDetail({
   variants = [],
   variant,
   onVariant,
+  flat,
+  children,
   onClose
 }: {
   riven: Riven
@@ -45,6 +47,10 @@ export default function RivenDetail({
   variants?: { id: string; name: string; owned: boolean }[]
   variant?: string
   onVariant?: (id: string) => void
+  // reduced form (no inventory riven behind it): stat text per row (buffs, then curses), no bars
+  flat?: string[]
+  // extra sections below the content
+  children?: React.ReactNode
   onClose: () => void
 }): React.JSX.Element {
   const [rank, setRank] = useState(riven.rank)
@@ -110,15 +116,17 @@ export default function RivenDetail({
                 </dd>
               </dl>
               {grade && <GradeBadge grade={grade} />}
-              <button
-                onClick={() => {
-                  void findSimilar(weapon, riven.buffTags, riven.curseTags[0])
-                  onClose()
-                }}
-                className="rounded-md border border-slate-600 px-2.5 py-1 text-sm hover:bg-slate-700/50"
-              >
-                Find similar
-              </button>
+              {!flat && (
+                <button
+                  onClick={() => {
+                    void findSimilar(weapon, riven.buffTags, riven.curseTags[0])
+                    onClose()
+                  }}
+                  className="rounded-md border border-slate-600 px-2.5 py-1 text-sm hover:bg-slate-700/50"
+                >
+                  Find similar
+                </button>
+              )}
               <button
                 onClick={onClose}
                 aria-label="Close"
@@ -147,22 +155,32 @@ export default function RivenDetail({
                       />
                     </label>
                   )}
-                  <label className="flex items-center gap-2 text-sm text-slate-300">
-                    Rank
-                    <Dropdown
-                      size="sm"
-                      value={String(rank)}
-                      onChange={(v) => setRank(Number(v))}
-                      options={Array.from({ length: 9 }, (_, r) => ({
-                        value: String(r),
-                        label: `${r}${r === riven.rank ? ' (current)' : ''}`
-                      }))}
-                    />
-                  </label>
+                  {!flat && (
+                    <label className="flex items-center gap-2 text-sm text-slate-300">
+                      Rank
+                      <Dropdown
+                        size="sm"
+                        value={String(rank)}
+                        onChange={(v) => setRank(Number(v))}
+                        options={Array.from({ length: 9 }, (_, r) => ({
+                          value: String(r),
+                          label: `${r}${r === riven.rank ? ' (current)' : ''}`
+                        }))}
+                      />
+                    </label>
+                  )}
                 </div>
                 {/* few modifiers sit in the middle instead of leaving the bottom empty */}
                 <div className="my-auto space-y-3">
-                  {rows.map(({ tag, name: label, neg, i }) => {
+                  {rows.map(({ tag, name: label, neg, i }, n) => {
+                    if (flat)
+                      return (
+                        <div key={tag} className="border-b border-slate-700/60 pb-2 last:border-0">
+                          <span className={neg ? 'text-red-500' : 'text-amber-300'}>
+                            <b className="tabular-nums">{flat[n]}</b> {label}
+                          </span>
+                        </div>
+                      )
                     const v = (neg ? now.curses : now.buffs)[i]
                     const lo = (neg ? low.curses : low.buffs)[i]
                     const hi = (neg ? high.curses : high.buffs)[i]
@@ -248,6 +266,7 @@ export default function RivenDetail({
                 )}
               </div>
             </div>
+            {children}
           </div>
         </NcCard>
       </div>

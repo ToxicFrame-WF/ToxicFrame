@@ -3,6 +3,7 @@ import * as cache from '../apiCache'
 import { useEffect, useMemo, useState } from 'react'
 import Icon from './Icon'
 import { useInventoryItems, type InvRow } from '../hooks/useInventoryItems'
+import { buildSets } from '../hooks/buildSets'
 import { usePersisted } from '../hooks/usePersisted'
 import { refreshInventory, useInventory } from '../hooks/useInventory'
 import { useItemMeta } from '../hooks/useItemMeta'
@@ -164,46 +165,7 @@ export default function InventoryPage(): React.JSX.Element {
     () => new Set([...settings.masteryFavorites, ...settings.craftingFavorites]),
     [settings.masteryFavorites, settings.craftingFavorites]
   )
-  // items whose every tradable part you own enough of
-  // One row per item you own at least one tradable part of: its parts, how many full sets you
-  // could build, and the set's market name.
-  const sets = useMemo(() => {
-    const owned = new Map(parts.map((p) => [p.key, p.count]))
-    const byParent = new Map<string, { id: string; m: InvMeta }[]>()
-    for (const [id, m] of Object.entries(invMeta))
-      if (m.kind === 'part' && m.parent && m.tradable)
-        byParent.set(m.parent, [...(byParent.get(m.parent) ?? []), { id, m }])
-    const out: InvRow[] = []
-    for (const [parent, list] of byParent) {
-      if (!list.some(({ id }) => owned.has(id))) continue
-      const item = byItem.get(parent)?.item
-      const name = item?.name ?? list[0].m.name.split(' ').slice(0, -1).join(' ')
-      const setParts = list
-        .map(({ id, m }) => ({
-          name: m.name.startsWith(name) ? m.name.slice(name.length).trim() : m.name,
-          image: m.image,
-          have: owned.get(id) ?? 0,
-          need: m.need ?? 1,
-          slug: m.slug
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-      out.push({
-        key: `set:${parent}`,
-        kind: 'part',
-        name: `${name} Set`,
-        image: item?.imageName,
-        count: Math.min(...setParts.map((x) => Math.floor(x.have / x.need))),
-        slug: `${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_set`,
-        ducats: list.reduce((n, { m }) => n + (m.ducats ?? 0) * (m.need ?? 1), 0) || undefined,
-        tradable: true,
-        isPrime: list[0].m.isPrime,
-        parent,
-        setParts,
-        mastered: byItem.get(parent)?.mastered
-      })
-    }
-    return out
-  }, [invMeta, parts, byItem])
+  const sets = useMemo(() => buildSets(invMeta, parts, byItem), [invMeta, parts, byItem])
 
   const completeSets = useMemo(() => {
     const owned = new Map(parts.map((p) => [p.key, p.count]))

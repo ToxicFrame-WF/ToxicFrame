@@ -1,7 +1,8 @@
 import { BrowserWindow } from 'electron'
 import { notify } from './notify'
 import { getMarketStats } from './marketScan'
-import { getTopOrders } from './marketOrders'
+import { getTopOrders, getItemOrders, getMyOrders } from './marketOrders'
+import { undercutsToTell } from './undercutLogic'
 import { getItemMeta } from './itemMeta'
 import { getPrefs } from './appPrefs'
 import {
@@ -63,6 +64,8 @@ export async function liveRound(): Promise<void> {
     live = next
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('market:live', live)
     await announce(next)
+  } catch {
+    // network trouble: the next round tries again
   } finally {
     running = false
   }
@@ -97,4 +100,59 @@ async function announce(deals: Record<string, LiveDeal>): Promise<void> {
       w.webContents.send('nav:page', 'analytics-market')
     }
   })
+}
+
+// Undercut alerts: every 10 minutes (linked account only) your visible sell orders are compared
+// with the cheapest online / in-game seller of the same rank. One request per item, so the
+// shared 400 ms gap in wfmFetch spaces them out.
+const undercutTold = new Map<string, { low: number; at: number }>()
+let undercutRunning = false
+
+export const clearUndercutTold = (): void => undercutTold.clear() // on logout
+
+export async function undercutRound(): Promise<void> {
+  if (undercutRunning) return
+  undercutRunning = true
+  try {
+    const mine = await getMyOrders() // ok:false without a linked account
+    if (!mine.ok) return
+    const meta = await getItemMeta()
+    const bySlug = new Map(Object.entries(meta).map(([slug, e]) => [e.id, { slug, name: e.name }]))
+    const sells = mine.orders.filter((o) => o.type === 'sell' && o.visible && bySlug.has(o.itemId))
+    for (const k of undercutTold.keys()) if (!sells.some((o) => o.id === k)) undercutTold.delete(k)
+    const lowest = new Map<string, number | undefined>()
+    const checked: typeof sells = [] // orders whose item orders were fetched
+    const fetched = new Map<string, Awaited<ReturnType<typeof getItemOrders>>>()
+    for (const o of sells) {
+      const slug = bySlug.get(o.itemId)!.slug
+      if (!fetched.has(slug)) fetched.set(slug, await getItemOrders(slug))
+      if (!fetched.get(slug)) continue // failed fetch: keep its told entry, check again next round
+      checked.push(o)
+      const prices = (fetched.get(slug)?.sell ?? [])
+        .filter((x) => x.id !== o.id && x.status !== 'offline' && x.status !== 'invisible')
+        .filter((x) => o.rank == null || x.rank === o.rank) // never compare across ranks
+        .map((x) => x.platinum)
+      lowest.set(o.id, prices.length ? Math.min(...prices) : undefined)
+    }
+    const fresh = undercutsToTell(checked, lowest, undercutTold, Date.now())
+    for (const f of fresh) {
+      const o = sells.find((s) => s.id === f.id)!
+      notify({
+        kind: 'undercut',
+        title: `${bySlug.get(o.itemId)!.name} undercut`,
+        body: `${bySlug.get(o.itemId)!.name} undercut: someone sells at ${f.low}p, you're at ${o.platinum}p`,
+        onClick: () => {
+          const w = BrowserWindow.getAllWindows()[0]
+          if (!w) return
+          if (w.isMinimized()) w.restore()
+          w.focus()
+          w.webContents.send('nav:page', 'market-orders')
+        }
+      })
+    }
+  } catch {
+    // network trouble: the next round tries again
+  } finally {
+    undercutRunning = false
+  }
 }

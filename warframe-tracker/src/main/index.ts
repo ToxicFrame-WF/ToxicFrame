@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { allBrowseIcons } from './browseIcons'
+import { allBrowseIcons, onIconsUpdated } from './browseIcons'
 import { autoTrackTrade } from './autoTrack'
 import { getTrades, importAlecaFrame, undoLastImport } from './tradeLog'
 import { app, shell, BrowserWindow, ipcMain, dialog, screen, nativeImage } from 'electron'
@@ -7,13 +7,19 @@ import { join } from 'path'
 import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { loadRelics, getVoidTraceIcon, getRelicDrops, getSyndicateShop } from './gameData'
+import {
+  resetGameDataImages,
+  loadRelics,
+  getVoidTraceIcon,
+  getRelicDrops,
+  getSyndicateShop
+} from './gameData'
 import { getPrice, getCachedPrices, loadPriceCache } from './priceService'
 import { getItemMeta } from './itemMeta'
 import { getWorldState } from './worldState'
 import { getArbitrations, getArbitrationForecast } from './arbitrations'
 import { getPlanetIcons } from './planetIcons'
-import { getPrefs, setPrefs } from './appPrefs'
+import { getPrefs, setPrefs, setPrefsFromRenderer } from './appPrefs'
 import { getArbiRuns, getArbiState } from './arbiTracker'
 import { getMaskedConfig, notify, setNotifyConfig, testNotify } from './notify'
 import { getInventory, notifyGameInfo, refreshInventory } from './inventory'
@@ -21,10 +27,9 @@ import {
   startInventoryAutoRefresh,
   setTradeHandler,
   setGameEventHandler,
-  stopInventoryAutoRefresh,
-  setInventoryAutoRefresh
+  stopInventoryAutoRefresh
 } from './logWatcher'
-import { getMasteryCatalog } from './masteryData'
+import { getMasteryCatalog, resetMasteryCache } from './masteryData'
 import { getStarchartData } from './starchart'
 import { getMasteryIcons } from './masteryIcons'
 import {
@@ -33,14 +38,16 @@ import {
   getWarframeDetail,
   getItemDetail,
   getResourceCatalog,
-  getArchonShards
+  getArchonShards,
+  resetInventoryMetaImages
 } from './inventoryMeta'
-import { getCraftables } from './craftingData'
+import { getCraftables, resetCraftingCache } from './craftingData'
 import { getRecipeMap } from './recipes'
 import { getAcrithisWares } from './acrithis'
 import { getStatsHistory } from './statsHistory'
 import { getMarketStats, onScanDone, prioritizeMarketItem, startMarketScan } from './marketScan'
-import { getLiveDeals, liveRound } from './marketLive'
+import { checkContractChange, checkContractCreate } from './contractInput'
+import { clearUndercutTold, getLiveDeals, liveRound, undercutRound } from './marketLive'
 import { getRivenGrades } from './rivenGrades'
 import { getRivenData } from './rivenData'
 import { searchAuctions } from './rivenSearch'
@@ -51,6 +58,7 @@ import { wikiAcquisition } from './wikiAcquisition'
 import { getWfmStatus, wfmLogin, wfmLogout } from './wfmAccount'
 import {
   getPresence,
+  getPublicStatus,
   setPresence,
   setAutoPresence,
   setPresenceListener,
@@ -69,7 +77,14 @@ import {
   type NewOrder,
   type OrderEdit
 } from './marketOrders'
-import { getMyContracts } from './marketContracts'
+import {
+  createContract,
+  getMyContracts,
+  getSavedContracts,
+  removeContract,
+  setAllContractsVisible,
+  updateContract
+} from './marketContracts'
 import {
   destroyOverlay,
   ensureWindow,
@@ -207,7 +222,20 @@ function createWindow(): void {
 // Linux: XWayland keeps always-on-top, click-through and xdotool working for the overlay.
 if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11')
 
+// One copy only: two would both watch EE.log and double-close trades.
+const gotLock = app.requestSingleInstanceLock()
+if (gotLock)
+  app.on('second-instance', () => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isAlwaysOnTop()) // not the overlay
+    if (!w) return
+    if (w.isMinimized()) w.restore()
+    w.show()
+    w.focus()
+  })
+else app.quit()
+
 app.whenReady().then(() => {
+  if (!gotLock) return // quitting: start nothing
   electronApp.setAppUserModelId('com.toxicframe.app') // must match appId in electron-builder.yml, or Windows drops notifications
 
   app.on('browser-window-created', (_, window) => {
@@ -240,7 +268,7 @@ app.whenReady().then(() => {
   ipcMain.handle('icons:planets', () => getPlanetIcons())
   ipcMain.handle('icons:voidTraces', () => getVoidTraceIcon())
   ipcMain.handle('relics:drops', (_e, id: string) => getRelicDrops(String(id)))
-  ipcMain.on('prefs:set', (_e, patch) => setPrefs(patch))
+  ipcMain.on('prefs:set', (_e, patch) => setPrefsFromRenderer(patch))
   ipcMain.handle('notify:getConfig', () => getMaskedConfig())
   ipcMain.handle('notify:setConfig', (_e, patch) => setNotifyConfig(patch ?? {}))
   ipcMain.handle('notify:test', () => testNotify())
@@ -251,9 +279,14 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('inventory:get', () => getInventory())
   ipcMain.handle('inventory:refresh', () => refreshInventory())
-  ipcMain.on('inventory:autoRefresh', (_e, on: boolean) => setInventoryAutoRefresh(Boolean(on)))
-  // Re-read the inventory when a loading screen finishes (see logWatcher).
+  onIconsUpdated(() => {
+    resetGameDataImages()
+    resetMasteryCache()
+    resetCraftingCache()
+    resetInventoryMetaImages()
+  })
   allBrowseIcons() // load the browse.wf picture map (downloads it on first run)
+  // Re-read the inventory when a loading screen finishes (see logWatcher).
   startInventoryAutoRefresh(() => {
     const p = getPrefs()
     if (p.setupDone && !p.manualInventory) void refreshInventory() // not before setup; manual: Refresh only
@@ -264,8 +297,8 @@ app.whenReady().then(() => {
   // after the main window, so they do not slow the start
   setTimeout(() => {
     ensureWindow()
-    warmOcr()
-    startScreenWatch()
+    startScreenWatch() // idle until setupDone
+    if (getPrefs().setupDone) warmOcr()
   }, 5000)
   ipcMain.handle('arbi:get', () => getArbiState())
   ipcMain.handle('arbi:runs', () => getArbiRuns())
@@ -367,8 +400,10 @@ app.whenReady().then(() => {
   ipcMain.handle('wfm:logout', () => {
     stopPresence()
     wfmLogout()
+    clearUndercutTold()
   })
   ipcMain.handle('wfm:presence:get', () => getPresence())
+  ipcMain.handle('wfm:presence:public', () => getPublicStatus())
   ipcMain.handle('wfm:presence:set', (_e, s: WfmPresence) => setPresence(s))
   ipcMain.handle('wfm:presence:auto', (_e, on: boolean, base: WfmPresence) =>
     setAutoPresence(on, base)
@@ -378,6 +413,17 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('market:myOrders', () => getMyOrders())
   ipcMain.handle('market:myContracts', () => getMyContracts())
+  ipcMain.handle('market:savedContracts', () => getSavedContracts())
+  ipcMain.handle('contract:update', (_e, id: string, change: unknown) => {
+    const c = checkContractChange(change)
+    return c.ok ? updateContract(String(id), c.value) : { ok: false, error: c.error }
+  })
+  ipcMain.handle('contract:remove', (_e, id: string) => removeContract(String(id)))
+  ipcMain.handle('contract:allVisible', (_e, visible: boolean) => setAllContractsVisible(!!visible))
+  ipcMain.handle('contract:create', (_e, body: unknown) => {
+    const c = checkContractCreate(body)
+    return c.ok ? createContract(c.value) : { ok: false, error: c.error }
+  })
   ipcMain.handle('market:updateOrder', (_e, id: string, edit: OrderEdit) =>
     updateOrder(String(id), edit)
   )
@@ -422,6 +468,8 @@ app.whenReady().then(() => {
   // live prices of the best deals: after every scan, then every 10 minutes
   onScanDone(() => void liveRound())
   setInterval(() => void liveRound(), 10 * 60_000)
+  setTimeout(() => void undercutRound(), 60_000)
+  setInterval(() => void undercutRound(), 10 * 60_000)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

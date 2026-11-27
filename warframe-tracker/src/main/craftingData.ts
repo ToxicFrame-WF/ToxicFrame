@@ -52,6 +52,9 @@ function kindOf(c: RawComp): CompKind {
 }
 
 let cache: CraftItem[] | null = null
+export const resetCraftingCache = (): void => {
+  cache = null
+}
 
 export function getCraftables(): CraftItem[] {
   if (cache) return cache

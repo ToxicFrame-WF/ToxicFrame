@@ -1,6 +1,6 @@
 import { wfmFetch } from './wfm'
 import { getWfmStatus, getWfmToken, wfmLogout } from './wfmAccount'
-import { addTrade, readSavedOrders, saveOrders } from './tradeLog'
+import { saveTrade, readSavedOrders, saveOrders } from './tradeLog'
 
 // Read-only market data: the linked account's own orders, and the top orders for any item.
 const V2 = 'https://api.warframe.market/v2'
@@ -222,23 +222,24 @@ export async function closeOrder(
   const res = await orderRequest('POST', `/order/${safeId(id)}/close`, { quantity: qty })
   const o = known.find((k) => k.id === id)
   if (res.ok && o) {
-    try {
-      if (actual?.log !== false)
-        addTrade({
-          at: Date.now(),
-          type: o.type === 'buy' ? 'buy' : 'sell',
-          itemId: o.itemId,
-          platinum: actual?.platinum ?? o.platinum,
-          quantity: qty,
-          user: actual?.user
-        })
-    } catch (e) {
-      console.error('Could not save the trade:', e)
-    }
+    let logged = true
+    if (actual?.log !== false)
+      logged = await saveTrade({
+        at: Date.now(),
+        type: o.type === 'buy' ? 'buy' : 'sell',
+        itemId: o.itemId,
+        platinum: actual?.platinum ?? o.platinum,
+        quantity: qty,
+        user: actual?.user
+      })
     o.quantity -= qty
     known = known.filter((k) => k.quantity > 0)
     saveOrders(known)
-  }
+    // the close did happen, so stay ok:true; the message tells the user the log missed it
+    if (!logged)
+      return { ok: true, error: 'Closed, but the sale could not be saved to the trade log.' }
+  } else if (res.ok && actual?.log !== false)
+    return { ok: true, error: 'Closed, but not logged (order not in the loaded list).' }
   return res
 }
 

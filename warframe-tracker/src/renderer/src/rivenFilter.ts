@@ -50,12 +50,13 @@ const norm = (s: string): string =>
     .replace(/[^a-z]/g, '')
 const TAG_BY_NAME = new Map(Object.entries(STATS).map(([tag, [, name]]) => [norm(name), tag]))
 TAG_BY_NAME.set('fireratesattackspeed', 'WeaponFireRateMod')
+TAG_BY_NAME.set('firerateattackspeed', 'WeaponFireRateMod') // wfm: "Fire Rate / Attack Speed"
 TAG_BY_NAME.set('criticalchanceforslideattack', 'SlideAttackCritChanceMod')
 // wfm calls both weapon kinds' damage stat just "Damage"
 export const tagOf = (name: string, melee = false): string | undefined => {
   const f = /^Damage (?:to|vs\.?) (\w+)/i.exec(name)?.[1]
   if (f) return `WeaponFactionDamage${f === 'Orokin' ? 'Corrupted' : f}`
-  return norm(name) === 'damage'
+  return norm(name) === 'damage' || norm(name) === 'basedamagemeleedamage'
     ? melee
       ? 'WeaponMeleeDamageMod'
       : 'WeaponDamageAmountMod'

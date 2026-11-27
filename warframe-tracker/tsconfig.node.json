@@ -4,10 +4,19 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/renderer/src/marketTools.ts"
+    // renderer logic files the main process imports (electron-free, shared)
+    "src/renderer/src/hotkeys.ts",
+    "src/renderer/src/localDay.ts",
+    "src/renderer/src/marketTools.ts",
+    "src/renderer/src/rivenFair.ts",
+    "src/renderer/src/rivenFilter.ts",
+    "src/renderer/src/rivenPlan.ts",
+    "src/renderer/src/rivens.ts",
+    "src/renderer/src/tradeStats.ts"
   ],
   "compilerOptions": {
     "composite": true,
+    "noEmit": true,
     "allowImportingTsExtensions": true,
     "types": ["electron-vite/node"]
   }

@@ -43,8 +43,8 @@ function logPath(): string | null {
   return join(local, 'Warframe', 'EE.log')
 }
 
-let enabled = true
 let position = 0
+let fileId = '' // inode + creation time of the log we are reading
 let tradeScan: ScanState = NEW_SCAN
 let onTrade: (t: LoggedTrade) => void = () => {}
 export const setTradeHandler = (fn: (t: LoggedTrade) => void): void => {
@@ -95,10 +95,6 @@ function noteLogin(text: string): boolean {
   return true
 }
 
-export function setInventoryAutoRefresh(on: boolean): void {
-  enabled = on
-}
-
 function handleSize(path: string): number {
   const fd = openSync(path, 'r')
   try {
@@ -116,11 +112,16 @@ function readNew(path: string, onInfo: () => void): boolean {
   try {
     const fd = openSync(path, 'r')
     try {
-      const size = fstatSync(fd).size
-      if (size < position) {
-        position = 0 // file rotated (game restarted)
+      const st = fstatSync(fd)
+      const size = st.size
+      // a restarted game makes a new file, which can already be longer than our old position
+      const id = `${st.ino}:${st.birthtimeMs}`
+      if (size < position || (fileId && id !== fileId)) {
+        position = 0
         partial = Buffer.alloc(0)
+        tradeScan = NEW_SCAN
       }
+      fileId = id
       if (size === position) return false
       buf = Buffer.alloc(size - position)
       read = readSync(fd, buf, 0, buf.length, position)
@@ -179,7 +180,7 @@ export function startInventoryAutoRefresh(
 
   // a plain timer, not watchFile: that relies on the path's size/mtime, which can lag on Windows
   timer = setInterval(() => {
-    if (!readNew(path, onInfo) || !enabled) return
+    if (!readNew(path, onInfo)) return
     if (debounce) clearTimeout(debounce)
     // too soon after the last refresh: delay it until the gap is up instead of dropping it
     const wait = Math.max(DEBOUNCE_MS, lastRun + MIN_GAP_MS - Date.now())

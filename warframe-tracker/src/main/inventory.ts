@@ -10,7 +10,7 @@ import { readFile, rename, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getGameInfo } from './logWatcher'
 import { recordSnapshot } from './statsHistory'
-import { toData, type HelperOutput, type InventoryData } from './inventoryData'
+import { toData, relicTotal, type HelperOutput, type InventoryData } from './inventoryData'
 
 export { toData }
 export type { InventoryData }
@@ -30,7 +30,7 @@ const EXIT_MESSAGES: Record<number, string> = {
   2: 'Could not open the game for reading.',
   3: 'Not logged in yet: reach the Orbiter, then refresh.',
   4: 'The game session was not accepted. Try again after a loading screen.',
-  5: 'Network error while loading the inventory.'
+  5: "Warframe's server or the network isn't answering. Try again in a few minutes."
 }
 
 let status: InventoryStatus = { state: 'none' }
@@ -130,10 +130,7 @@ export function refreshInventory(): Promise<InventoryStatus> {
       await writeFile(cacheFile() + '.tmp', JSON.stringify({ fetchedAt, output }))
         .then(() => rename(cacheFile() + '.tmp', cacheFile()))
         .catch(() => {})
-      recordSnapshot(
-        output.inventory ?? {},
-        (output.relics ?? []).reduce((n, r) => n + (r.ItemCount ?? 0), 0)
-      )
+      recordSnapshot(output.inventory ?? {}, relicTotal(output.relics))
     } catch (e) {
       status = { ...status, state: 'error', error: (e as Error).message }
     }

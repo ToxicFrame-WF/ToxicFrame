@@ -2,7 +2,7 @@ import { Notification } from 'electron'
 import { getPrefs, setPrefs } from './appPrefs'
 
 export type NotifyKind =
-  'arbitration' | 'marketDeal' | 'trade' | 'reward' | 'chat' | 'cycle' | 'sniper'
+  'arbitration' | 'marketDeal' | 'undercut' | 'trade' | 'reward' | 'chat' | 'cycle' | 'sniper'
 
 export interface NotifyRoute {
   windows: boolean
@@ -18,6 +18,7 @@ export interface NotifyConfig {
 const KINDS: NotifyKind[] = [
   'arbitration',
   'marketDeal',
+  'undercut',
   'trade',
   'reward',
   'chat',
