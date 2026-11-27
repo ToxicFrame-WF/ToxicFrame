@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+helper/target/
+*.tsbuildinfo
+.eslintcache
+*.log
+.env*
+Thumbs.db
+.DS_Store
+test-results/
+playwright-report/
+scan_results.txt
+
+
+# real game screenshot with other players' names
+warframe-tracker/tests/fixtures/reward-screen-*.png

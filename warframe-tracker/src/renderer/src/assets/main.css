@@ -1,0 +1,615 @@
+@import "tailwindcss";
+
+/* Tektur (SIL OFL 1.1, see fonts/OFL.txt): ToxicFrame wordmark and headings */
+@font-face {
+  font-family: 'Tektur';
+  src: url('./fonts/tektur-500.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Tektur';
+  src: url('./fonts/tektur-700.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+@theme {
+  --font-tektur: 'Tektur', 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+
+/* Alecaframe-style dark navy palette: recolors the slate classes used across the app */
+@theme {
+  --color-slate-950: #0b0e18;
+  --color-slate-900: #11162a;
+  --color-slate-800: #1a2038;
+  --color-slate-700: #2a3354;
+  --color-slate-600: #3a4570;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-slate-950);
+  color: #e6e9f5;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* slim scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 10px 0; /* keeps the track away from rounded corners */
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-700);
+  border-radius: 4px;
+}
+
+/* "Enter Night City" (Settings > Other): neon-on-black, hard corners, condensed caps.
+   Recolours through the same palette variables the colour themes use. */
+:root[data-mode='nightcity'] {
+  --color-slate-950: #050608;
+  --color-slate-900: #0b0d12;
+  --color-slate-800: #12151d;
+  --color-slate-700: #1d4a52;
+  --color-slate-600: #2a6b75;
+  --color-slate-500: #3b8f9a;
+  --color-violet-600: #f3e600;
+  --color-violet-500: #f8ef3d;
+  --color-violet-400: #fbf37a;
+  --color-violet-300: #fdf8b0;
+  --color-violet-200: #fefbd6;
+  --color-sky-300: #00f0ff;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+}
+:root[data-mode='nightcity'] body {
+  font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+  letter-spacing: 0.02em;
+}
+:root[data-mode='nightcity'] h1,
+:root[data-mode='nightcity'] h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f3e600;
+  text-shadow: 0 0 8px rgb(243 230 0 / 0.35);
+}
+/* selected buttons: yellow on black text, like the game's menus */
+:root[data-mode='nightcity'] .bg-violet-600 {
+  color: #050608;
+}
+
+/* angled corners (top-left and bottom-right cut), used by the Night City inventory */
+.nc-chamfer {
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+/* faint scanlines over the whole app; off when the system asks for reduced motion/effects */
+:root[data-mode='nightcity'] body::after {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgb(0 240 255 / 0.035) 0 1px,
+    transparent 1px 3px
+  );
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-mode='nightcity'] body::after {
+    display: none;
+  }
+}
+
+/* Night City screen: dark red-to-magenta glow behind fine cyan lines */
+.nc-screen {
+  background:
+    radial-gradient(ellipse at 70% 0%, rgb(170 30 70 / 0.35), transparent 60%),
+    linear-gradient(160deg, #1a0710 0%, #0c0508 60%, #08070b 100%);
+}
+/* yellow header tabs with a slanted right end */
+.nc-tab {
+  width: fit-content;
+  min-width: 10rem;
+  padding-right: 2rem;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+
+/* ---- Night City across the whole app ----
+   Same language as the Night City inventory: red-magenta glow behind fine cyan lines, yellow
+   headings and selections, square corners, small capitals. Done with CSS on the classes every
+   page already uses, so each page picks it up without its own layout. */
+:root[data-mode='nightcity'] {
+  /* panels and cards: dark wine instead of navy, borders in teal */
+  --color-slate-950: #0c0508;
+  --color-slate-900: #13070d;
+  --color-slate-800: #1b0a12;
+  --color-slate-700: #1f5a5f;
+  --color-slate-600: #2b7c80;
+  --color-slate-500: #4f9fa1;
+  --color-slate-400: #9fb3b5;
+  --color-slate-300: #c9d6d7;
+}
+:root[data-mode='nightcity'] body {
+  background:
+    radial-gradient(ellipse at 75% -10%, rgb(170 30 70 / 0.35), transparent 55%),
+    linear-gradient(160deg, #1a0710 0%, #0c0508 55%, #08070b 100%);
+}
+/* the big frames (sidebar, main panel, right panel cards) let the glow through and get thin
+   cyan lines with corner marks */
+:root[data-mode='nightcity'] main > div,
+:root[data-mode='nightcity'] aside,
+:root[data-mode='nightcity'] header {
+  background-color: rgb(12 5 8 / 0.55) !important;
+  border-color: rgb(47 212 208 / 0.4) !important;
+}
+:root[data-mode='nightcity'] main > div {
+  position: relative;
+  background-image:
+    linear-gradient(#2fd4d0, #2fd4d0), linear-gradient(#2fd4d0, #2fd4d0),
+    linear-gradient(#2fd4d0, #2fd4d0), linear-gradient(#2fd4d0, #2fd4d0);
+  background-size:
+    14px 1px, 1px 14px, 14px 1px, 1px 14px;
+  background-position:
+    0 0, 0 0, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+}
+/* page titles: a yellow tab with a slanted end, black text */
+:root[data-mode='nightcity'] h1 {
+  width: fit-content;
+  padding: 0.15rem 2.2rem 0.15rem 0.8rem;
+  background: #f3e600;
+  color: #0c0508 !important;
+  text-shadow: none;
+  font-size: 1rem !important;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+/* section titles: yellow capitals with a fine underline */
+:root[data-mode='nightcity'] h2 {
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgb(243 230 0 / 0.35);
+}
+/* cards: fine teal outline, slightly see-through */
+:root[data-mode='nightcity'] .rounded-xl,
+:root[data-mode='nightcity'] .rounded-2xl {
+  background-color: rgb(12 5 8 / 0.6);
+}
+/* buttons and tabs in small capitals */
+:root[data-mode='nightcity'] button,
+:root[data-mode='nightcity'] select {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+/* anything selected (violet in Release) becomes solid yellow with black text */
+:root[data-mode='nightcity'] [class*='bg-violet-500/20'],
+:root[data-mode='nightcity'] [class*='bg-violet-500/15'],
+:root[data-mode='nightcity'] [class*='bg-violet-600'],
+:root[data-mode='nightcity'] [class*='bg-[#2a3a66]'] {
+  background: #f3e600 !important;
+  color: #0c0508 !important;
+  border-color: #f3e600 !important;
+}
+:root[data-mode='nightcity'] [class*='bg-violet-500/20'] *,
+:root[data-mode='nightcity'] [class*='bg-violet-600'] *,
+:root[data-mode='nightcity'] [class*='bg-[#2a3a66]'] * {
+  color: #0c0508 !important;
+}
+/* keyboard focus stays visible on the dark background */
+:root[data-mode='nightcity'] :focus-visible {
+  outline: 1px solid #f3e600;
+  outline-offset: 2px;
+}
+
+/* ---- Night City, game-menu palette ----
+   Red is the line and label colour, cyan marks what is selected, yellow is only for money.
+   These rules come last so they override the yellow-selection version above. */
+:root[data-mode='nightcity'] {
+  --color-slate-700: #4a1c20;
+  --color-slate-600: #7a3236;
+  --color-slate-500: #a3474a;
+  --color-violet-600: #50d8e0;
+  --color-violet-500: #50d8e0;
+  --color-violet-400: #8ff9ff;
+  --color-violet-300: #b8fbff;
+}
+:root[data-mode='nightcity'] body {
+  background:
+    radial-gradient(rgb(255 90 74 / 0.07) 1px, transparent 1px) 0 0 / 7px 7px,
+    radial-gradient(ellipse at 50% -10%, rgb(160 30 40 / 0.4), transparent 60%),
+    linear-gradient(180deg, #1c0809 0%, #0e0506 60%, #080506 100%);
+}
+:root[data-mode='nightcity'] main > div,
+:root[data-mode='nightcity'] aside,
+:root[data-mode='nightcity'] header {
+  background-color: rgb(14 5 6 / 0.55) !important;
+  border-color: rgb(196 69 63 / 0.45) !important;
+}
+:root[data-mode='nightcity'] main > div {
+  background-image:
+    linear-gradient(#c4453f, #c4453f), linear-gradient(#c4453f, #c4453f),
+    linear-gradient(#c4453f, #c4453f), linear-gradient(#c4453f, #c4453f);
+}
+:root[data-mode='nightcity'] h1 {
+  background: none;
+  padding: 0;
+  clip-path: none;
+  color: #ff6b5a !important;
+  font-size: 1.25rem !important;
+  letter-spacing: 0.2em;
+}
+:root[data-mode='nightcity'] h2 {
+  color: #ff6b5a;
+  text-shadow: none;
+  border-bottom-color: rgb(196 69 63 / 0.4);
+}
+/* selected: cyan text and frame on a faint cyan wash, like an active menu entry */
+:root[data-mode='nightcity'] [class*='bg-violet-500/20'],
+:root[data-mode='nightcity'] [class*='bg-violet-500/15'],
+:root[data-mode='nightcity'] [class*='bg-violet-600'],
+:root[data-mode='nightcity'] [class*='bg-[#2a3a66]'] {
+  background: rgb(80 216 224 / 0.12) !important;
+  color: #50d8e0 !important;
+  border-color: #50d8e0 !important;
+}
+:root[data-mode='nightcity'] [class*='bg-violet-500/20'] *,
+:root[data-mode='nightcity'] [class*='bg-violet-600'] *,
+:root[data-mode='nightcity'] [class*='bg-[#2a3a66]'] * {
+  color: #50d8e0 !important;
+}
+:root[data-mode='nightcity'] :focus-visible {
+  outline-color: #50d8e0;
+}
+/* top navigation bar */
+.nc-topnav {
+  background: linear-gradient(180deg, rgb(28 8 9 / 0.9), rgb(14 5 6 / 0.7));
+  border-color: rgb(196 69 63 / 0.45);
+}
+.nc-navtab[data-on] {
+  box-shadow: inset 0 -2px 0 #50d8e0;
+  background: rgb(80 216 224 / 0.08);
+}
+
+/* ---- Night City screens: every page reads like the inventory terminal ----
+   (design rules: design-system/night-city/MASTER.md — Cyberpunk UI / HUD: 1px lines, tech
+   markers, neon only for state, dense spacing) */
+.nc-screen-head {
+  border-color: rgb(196 69 63 / 0.55);
+}
+/* the shared header names the page, so each page's own title is hidden */
+:root[data-mode='nightcity'] main h1 {
+  display: none;
+}
+/* a title row left with nothing but that hidden title would only add an empty gap */
+:root[data-mode='nightcity'] main div:has(> h1:only-child) {
+  display: none;
+}
+/* panels: 1px red frame, cut bottom-right corner, short cyan tick on the top-left edge */
+:root[data-mode='nightcity'] main .rounded-xl,
+:root[data-mode='nightcity'] main .rounded-2xl {
+  position: relative;
+  border: 1px solid rgb(196 69 63 / 0.55) !important;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+:root[data-mode='nightcity'] main .rounded-xl::before,
+:root[data-mode='nightcity'] main .rounded-2xl::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 28px;
+  height: 2px;
+  background: #50d8e0;
+  pointer-events: none;
+}
+/* the outer page panel itself is the screen, not a card */
+:root[data-mode='nightcity'] main > div.rounded-2xl {
+  clip-path: none;
+}
+:root[data-mode='nightcity'] main > div.rounded-2xl::before {
+  display: none;
+}
+/* section titles become the same cyan tab as an NcCard's (components/NcCard.tsx), so both read alike */
+:root[data-mode='nightcity'] main h2 {
+  width: fit-content;
+  min-width: 10rem;
+  padding: 0.125rem 2rem 0.125rem 0.75rem;
+  background: #3fa9b0;
+  color: #0e0506 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 0;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+}
+:root[data-mode='nightcity'] main h2 * {
+  color: #0e0506 !important;
+}
+/* labels in small spaced capitals, numbers stay plain */
+:root[data-mode='nightcity'] main .text-xs,
+:root[data-mode='nightcity'] main .text-\[11px\] {
+  letter-spacing: 0.06em;
+}
+
+/* ---- Night City, more vibrant (the earlier inventory screen's colours) ----
+   Stronger red-magenta glow inside the page panel, brighter lines, cyan with a soft neon glow. */
+:root[data-mode='nightcity'] main > div {
+  background-color: transparent !important;
+  background-image:
+    radial-gradient(ellipse at 70% 0%, rgb(185 35 80 / 0.45), transparent 60%),
+    radial-gradient(ellipse at 10% 100%, rgb(110 20 55 / 0.28), transparent 55%),
+    linear-gradient(160deg, #2a0a17 0%, #14060c 60%, #0b060a 100%) !important;
+  background-size: auto !important;
+  border-color: rgb(255 77 90 / 0.5) !important;
+}
+:root[data-mode='nightcity'] aside,
+:root[data-mode='nightcity'] .nc-topnav {
+  background-image: linear-gradient(180deg, rgb(60 12 30 / 0.85), rgb(20 6 12 / 0.85)) !important;
+  border-color: rgb(255 77 90 / 0.5) !important;
+}
+:root[data-mode='nightcity'] {
+  --color-slate-700: #6a2232;
+  --color-slate-600: #a8344a;
+  --color-slate-500: #ff4d5a;
+}
+:root[data-mode='nightcity'] main .rounded-xl,
+:root[data-mode='nightcity'] main .rounded-2xl {
+  border-color: rgb(255 77 90 / 0.65) !important;
+  background-color: rgb(20 6 12 / 0.45) !important;
+}
+:root[data-mode='nightcity'] .nc-screen-head {
+  border-color: rgb(255 77 90 / 0.7);
+}
+:root[data-mode='nightcity'] .nc-screen-head span:first-child {
+  color: #ff4d5a !important;
+  text-shadow: 0 0 10px rgb(255 77 90 / 0.4);
+}
+:root[data-mode='nightcity'] .nc-screen-head .nc-page-name,
+:root[data-mode='nightcity'] .nc-navtab[data-on] {
+  text-shadow: 0 0 10px rgb(80 216 224 / 0.45);
+}
+/* selected entries glow a little */
+:root[data-mode='nightcity'] [class*='bg-violet-500/20'],
+:root[data-mode='nightcity'] [class*='bg-violet-600'],
+:root[data-mode='nightcity'] [class*='bg-[#2a3a66]'] {
+  background: rgb(80 216 224 / 0.18) !important;
+  box-shadow: 0 0 12px rgb(80 216 224 / 0.18);
+}
+
+/* ---- Night City item cards (components/NcCard.tsx) ----
+   The card inside the frame gives up its own frame and title so it reads like the inventory
+   card: cyan tab + cyan box, red-framed picture, small capitals, red outline / cyan buttons. */
+:root[data-mode='nightcity'] main .nc-card-body > * {
+  width: 100%; /* cards that are buttons would otherwise shrink to their content */
+  border: 0 !important;
+  background: transparent !important;
+  clip-path: none !important;
+}
+:root[data-mode='nightcity'] main .nc-card-body > *::before {
+  display: none !important;
+}
+.nc-card .nc-name {
+  display: none;
+}
+.nc-card img,
+.nc-card .rounded-lg.bg-slate-900 {
+  border: 1px solid rgb(255 77 90 / 0.55);
+  border-radius: 0;
+}
+.nc-card .text-xs,
+.nc-card .text-\[11px\] {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+/* .nc-quiet: outlined buttons that should stay calm (e.g. unselected tabs beside a selected one) */
+.nc-card-body * button.border:not([class*='bg-violet']):not([aria-pressed='true']):not(.nc-card-body > *):not(.nc-day):not(.nc-quiet) {
+  border-color: #ff4d5a !important;
+  color: #ff4d5a !important;
+}
+
+/* ---- Night City pop-up windows: solid backing so text stays readable ----
+   The see-through panels look right on the page, but a window over busy cards needs an opaque
+   base; its inner cards keep their light tint on top of it. */
+:root[data-mode='nightcity'] .fixed.inset-0[class*='bg-black'] {
+  background-color: rgb(4 1 3 / 0.82) !important;
+}
+:root[data-mode='nightcity'] .fixed.inset-0[class*='bg-black'] > div {
+  background-color: #170710 !important;
+  background-image: radial-gradient(ellipse at 70% 0%, rgb(185 35 80 / 0.25), transparent 60%) !important;
+}
+:root[data-mode='nightcity'] .fixed.inset-0[class*='bg-black'] .rounded-xl,
+:root[data-mode='nightcity'] .fixed.inset-0[class*='bg-black'] .rounded-2xl {
+  background-color: rgb(30 10 18 / 0.9) !important;
+}
+
+/* the Night City menu bar is the window's title bar: drag on empty space, click the buttons */
+.nc-topnav button,
+.nc-topnav a {
+  -webkit-app-region: no-drag;
+}
+/* window buttons sit right after the settings gear, not pushed away from it */
+.nc-topnav .ml-auto {
+  margin-left: 0;
+}
+
+/* Night City cards (NcCard and the inventory's own cards): dimmed cyan at rest, full on hover */
+.nc-card > .nc-tab,
+.nc-inv-card .nc-tab {
+  background: #3fa9b0;
+  transition: background-color 150ms;
+}
+/* the frame is the tab's own colour, so tab and frame read as one piece */
+.nc-card > .nc-card-body,
+.nc-inv-card .nc-card-frame {
+  border-color: #3fa9b0;
+  transition: border-color 150ms;
+}
+/* the tab reaches 1px over a 2px top line and is drawn above it: with Windows display scaling
+   (125%, 150%) edges fall between pixels, and this keeps any blend teal on teal (no seam) */
+.nc-card > .nc-tab,
+.nc-inv-card > .nc-tab {
+  position: relative;
+  z-index: 1;
+  margin-bottom: -1px;
+}
+.nc-card > .nc-card-body,
+.nc-inv-card > .nc-card-frame {
+  border-top-width: 2px;
+}
+.nc-card:hover > .nc-tab,
+.nc-card[data-on] > .nc-tab,
+.nc-inv-card:hover .nc-tab {
+  background: #5ef6ff;
+}
+/* card buttons rest at the tab's muted cyan / a muted red and light up with the card on hover */
+.nc-inv-card .nc-inv-trade {
+  background: #3fa9b0;
+  transition: background-color 150ms;
+}
+.nc-inv-card:hover .nc-inv-trade {
+  background: #5ef6ff;
+}
+.nc-inv-card .nc-inv-inspect {
+  border-color: #c4453f;
+  color: #c4453f;
+}
+.nc-inv-card:hover .nc-inv-inspect {
+  border-color: #ff4d5a;
+  color: #ff4d5a;
+}
+.nc-card:hover > .nc-card-body,
+.nc-card[data-on] > .nc-card-body,
+.nc-inv-card:hover .nc-card-frame {
+  border-color: #5ef6ff;
+}
+
+/* boxes inside a Night City card (search fields, sub-totals) are plain frames, not panels:
+   no cut corner, no cyan tick, a softer red line */
+:root[data-mode='nightcity'] main .nc-card-body .rounded-xl,
+:root[data-mode='nightcity'] main .nc-card-body .rounded-2xl {
+  clip-path: none;
+  border-color: rgb(196 69 63 / 0.35) !important;
+}
+:root[data-mode='nightcity'] main .nc-card-body .rounded-xl::before,
+:root[data-mode='nightcity'] main .nc-card-body .rounded-2xl::before {
+  display: none;
+}
+
+/* a pop-up that is itself a card: only the framed body is solid, the strip beside the tab stays clear */
+:root[data-mode='nightcity'] .fixed.inset-0[class*='bg-black'] > .nc-dialog-card {
+  background: transparent !important;
+}
+:root[data-mode='nightcity'] .nc-dialog-card > .nc-card > .nc-card-body {
+  background: #170710 radial-gradient(ellipse at 70% 0%, rgb(185 35 80 / 0.25), transparent 60%) !important;
+}
+
+/* cards side by side in a grid row are as tall as the tallest: the body and its content stretch */
+.nc-card-body > * {
+  flex: 1 1 auto;
+}
+
+/* floating pop-ups (profile card, right-panel hovers and menus): solid, so the page behind
+   doesn't show through the see-through card background */
+:root[data-mode='nightcity'] .nc-pop {
+  background-color: #170710 !important;
+  background-image: radial-gradient(ellipse at 70% 0%, rgb(185 35 80 / 0.25), transparent 60%) !important;
+}
+
+/* right sidebar tabs: active = cyan text with an underline, like the top navigation */
+:root[data-mode='nightcity'] .right-panel button[data-on] {
+  background: transparent !important;
+  color: #50d8e0 !important;
+  box-shadow: inset 0 -2px 0 #50d8e0;
+}
+
+/* the right sidebar's outer layer is only spacing: its gradient belongs on the framed box inside,
+   otherwise the padding strip under the top bar starts a second, brighter gradient (a seam) */
+:root[data-mode='nightcity'] aside.right-panel {
+  background: none !important;
+}
+:root[data-mode='nightcity'] aside.right-panel > div {
+  background-image: linear-gradient(180deg, rgb(60 12 30 / 0.85), rgb(20 6 12 / 0.85)) !important;
+  border-color: rgb(255 77 90 / 0.5) !important; /* same red frame as the page panel */
+}
+
+/* one scrollbar look everywhere in Night City (page panel and right sidebar alike) */
+:root[data-mode='nightcity'] ::-webkit-scrollbar-thumb {
+  background: rgb(255 77 90 / 0.35);
+}
+:root[data-mode='nightcity'] ::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 77 90 / 0.6);
+}
+
+/* a control drawn without the Night City field frame (e.g. the market status picker's select) */
+:root[data-mode='nightcity'] .nc-bare {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ---- Night City top bar touch-up ---- */
+/* the active group tab is a cyan tab, both sides slanted so it sits evenly in the centred row and
+   widens toward the bar like a tab growing out of it */
+:root[data-mode='nightcity'] .nc-navtab[data-on] {
+  background: #50d8e0 !important;
+  color: #0e0506 !important;
+  box-shadow: none;
+  text-shadow: none !important;
+}
+/* every main tab carries the slant (invisible without a background), so a tab losing its cyan
+   fades out in the slanted shape instead of flashing a square box */
+:root[data-mode='nightcity'] .nc-navtab {
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 100%, 0 100%);
+}
+/* window buttons in the bar's red, cyan on hover; close fills red */
+:root[data-mode='nightcity'] .nc-winbtn {
+  color: #ff6b5a;
+  background: transparent !important;
+  transition: color 150ms, background-color 150ms;
+}
+:root[data-mode='nightcity'] .nc-winbtn:hover {
+  color: #5ef6ff;
+}
+:root[data-mode='nightcity'] .nc-winclose:hover {
+  background: #ff4d5a !important;
+  color: #0e0506;
+}
+
+/* the in-game overlay window: see-through, no app background or scanlines */
+:root.tf-overlay body {
+  background: transparent !important;
+}
+:root.tf-overlay body::after {
+  display: none !important;
+}
+/* the app's panel glow, a little see-through over the game */
+:root.tf-overlay .nc-screen {
+  background:
+    radial-gradient(ellipse at 70% 0%, rgb(170 30 70 / 0.3), transparent 60%),
+    linear-gradient(
+      160deg,
+      rgb(26 7 16 / var(--tf-bg-alpha, 0.9)) 0%,
+      rgb(12 5 8 / var(--tf-bg-alpha, 0.9)) 60%,
+      rgb(8 7 11 / var(--tf-bg-alpha, 0.9)) 100%
+    );
+}
+/* over the game the cards rest in the app's unlit cyan; a lit card (the best reward) only steps
+   up a little, since full cyan is harsh on HDR screens */
+:root.tf-overlay .nc-card[data-on] > .nc-tab {
+  background: #4cc6cd;
+}
+:root.tf-overlay .nc-card[data-on] > .nc-card-body {
+  border-color: #4cc6cd;
+}

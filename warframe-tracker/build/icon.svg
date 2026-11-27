@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- colours from the Night City theme as rendered in the app -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4d0f24"/>
+      <stop offset="0.4" stop-color="#320b18"/>
+      <stop offset="1" stop-color="#0b060a"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5ef6ff"/>
+      <stop offset="0.55" stop-color="#3fd8c4"/>
+      <stop offset="1" stop-color="#44d39a"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+  </defs>
+  <!-- frame: panel gradient and border sampled from the running app (Night City) -->
+  <path d="M200 40 H984 V824 L824 984 H40 V200 Z" fill="url(#bg)" stroke="#a63a45" stroke-width="32" stroke-linejoin="miter"/>
+  <!-- corner accents -->
+  <rect x="704" y="104" width="200" height="24" fill="#ff6b5a"/>
+  <rect x="120" y="896" width="140" height="24" fill="#a63a45"/>
+  <rect x="276" y="896" width="44" height="24" fill="#f3e600"/>
+  <!-- toxin drop with glow -->
+  <path d="M512 196 C512 196 296 452 296 620 A216 216 0 0 0 728 620 C728 452 512 196 512 196 Z" fill="#3fe0c0" opacity="0.5" filter="url(#glow)"/>
+  <path d="M512 196 C512 196 296 452 296 620 A216 216 0 0 0 728 620 C728 452 512 196 512 196 Z" fill="url(#drop)"/>
+</svg>

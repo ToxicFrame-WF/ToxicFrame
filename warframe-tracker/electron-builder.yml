@@ -1,0 +1,24 @@
+appId: com.toxicframe.app
+productName: ToxicFrame
+directories:
+  buildResources: build
+files:
+  # allowlist: only the built app ships (no dev notes, logs, screenshots)
+  - 'out/**'
+  - 'resources/**'
+  - 'package.json'
+asarUnpack:
+  - resources/**
+win:
+  executableName: ToxicFrame
+  # Inventory helper (build it first: cargo build --release in ../helper)
+  extraResources:
+    - from: ../helper/target/release/tf-helper.exe
+      to: tf-helper.exe
+nsis:
+  artifactName: ${productName}-Setup-${version}.${ext}
+  oneClick: true
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+npmRebuild: false

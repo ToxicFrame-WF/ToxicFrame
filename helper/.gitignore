@@ -1,0 +1,4 @@
+/target
+scan_results*.txt
+*.dmp
+*.bin
