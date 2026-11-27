@@ -18,7 +18,7 @@
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "test": "node --experimental-test-module-mocks --test tests/"
+    "test": "node --experimental-test-module-mocks --test \"tests/**/*.test.ts\""
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
