@@ -1,0 +1,37 @@
+name: Bug report
+description: Something in ToxicFrame doesn't work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ToxicFrame version
+      description: Shown in Settings, or in the installer's file name.
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: dropdown
+    id: inventory
+    attributes:
+      label: Inventory updates
+      options:
+        - Automatic
+        - Manual
+        - Not sure
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or error messages
+      description: Please hide your in-game name, platinum or anything else you don't want to share.
